@@ -1,0 +1,28 @@
+[package]
+name = "checkAssociations"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lambda_runtime = "0.8.1"
+log = "0.4.14"
+serde = "1.0.136"
+serde_json = "1.0.64"
+simple_logger = "1.11.0"
+tokio = {version = "1", features = ["full"]}
+rayon = "1.6.1"
+time = "0.3.17"
+reqwest = { version = "0.11.14", default-features = false, features = ["rustls-tls", "json"] }
+openssl = { version = "0.10", features = ["vendored"] }
+futures-util = "0.3.27"
+hyper-native-tls = "0.3.0"
+select = "0.6.0"
+aws-sdk-dynamodb = "0.28.0"
+uuid = { version="1.4.0", features=["v4", "fast-rng", "macro-diagnostics"] }
+openai-api-rs = "0.1.8"
+aws-config = "0.55.3"
+
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
