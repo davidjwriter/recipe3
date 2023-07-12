@@ -17,10 +17,11 @@ openssl = { version = "0.10", features = ["vendored"] }
 futures-util = "0.3.27"
 hyper-native-tls = "0.3.0"
 select = "0.6.0"
-aws-sdk-dynamodb = "0.28.0"
+aws-config = { git = "https://github.com/awslabs/aws-sdk-rust", branch = "main" }
+aws-sdk-dynamodb = { git = "https://github.com/awslabs/aws-sdk-rust", branch = "main" }
 uuid = { version="1.4.0", features=["v4", "fast-rng", "macro-diagnostics"] }
 openai-api-rs = "0.1.8"
-aws-config = "0.55.3"
+clap = "4.3.11"
 
 
 [[bin]]

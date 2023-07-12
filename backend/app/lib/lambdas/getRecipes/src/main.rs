@@ -4,8 +4,23 @@ use serde_json::Value;
 use lambda_runtime::{service_fn, LambdaEvent, Error};
 use std::collections::HashMap;
 use aws_sdk_dynamodb::types::AttributeValue;
-use aws_sdk_dynamodb::{Client};
 use std::env;
+use aws_config::{meta::region::RegionProviderChain, SdkConfig};
+use aws_sdk_dynamodb::{config::Region, meta::PKG_VERSION, Client};
+use clap::Parser;
+use futures_util::StreamExt;
+use rayon::iter::ParallelIterator;
+use std::iter::Iterator;
+
+
+#[derive(Debug)]
+pub struct Opt {
+    /// The AWS Region.
+    pub region: Option<String>,
+
+    /// Whether to display additional information.
+    pub verbose: bool,
+}
 
 #[derive(Deserialize)]
 pub struct Request {
@@ -63,6 +78,28 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     Ok(())
 }
 
+pub fn make_region_provider(region: Option<String>) -> RegionProviderChain {
+    RegionProviderChain::first_try(region.map(Region::new))
+        .or_default_provider()
+        .or_else(Region::new("us-east-1"))
+}
+
+pub async fn make_config(opt: Opt) -> Result<SdkConfig, Error> {
+    let region_provider = make_region_provider(opt.region);
+
+    println!();
+    if opt.verbose {
+        println!("DynamoDB client version: {}", PKG_VERSION);
+        println!(
+            "Region:                  {}",
+            region_provider.region().await.unwrap().as_ref()
+        );
+        println!();
+    }
+
+    Ok(aws_config::from_env().region(region_provider).load().await)
+}
+
 fn as_string(val: Option<&AttributeValue>, default: &String) -> String {
     if let Some(v) = val {
         if let Ok(s) = v.as_s() {
@@ -86,28 +123,56 @@ async fn get_table_name() -> Option<String> {
 }
 
 async fn get_recipes_from_db(client: &Client, table_name: &str) -> Result<Vec<Recipe>, FailureResponse> {
-    let results = match client.query().table_name(table_name).send().await {
-        Ok(r) => r,
+    let tables = match client.list_tables().send().await {
+        Ok(t) => t,
         Err(e) => {
+            println!("Client list tables error: {}", e.to_string());
             return Err(FailureResponse {
-                body: format!("Error reading from db: {}", e.to_string())
+                body: format!("Error reading from db: {:?}", e)
             });
         }
     };
+    println!("Tables: {:?}", tables);
+    let items = match client
+        .scan()
+        .table_name(table_name)
+        .send()
+        .await {
+            Ok(i) => i,
+            Err(e) => {
+                return Err(FailureResponse {
+                    body: format!("Err db: {:?}", e)
+                });
+            }
+        };
 
-    if let Some(items) = results.items {
-        let recipes = items.iter().map(|v| v.into()).collect();
-        return Ok(recipes);
-    } 
-    return Err(FailureResponse {
-        body: String::from("Error in getting recipes from db")
-    });
+    
+    let recipes: Vec<Recipe> = items
+        .items
+        .unwrap()
+        .iter()
+        .map(|hashmap| Recipe::from(hashmap))
+        .collect();
+    return Ok(recipes);
 }
 
 async fn handler(_event: LambdaEvent<Value>) -> Response {
     // 1. Create db client and get table name from env
-    let config = aws_config::load_from_env().await;
+    let opt = Opt {
+        region: Some("us-east-1".to_string()),
+        verbose: true,
+    };
+    let config = match make_config(opt).await {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(FailureResponse {
+                body: format!("Error making config: {}", e.to_string())
+            });
+        },
+    };
+    println!("Config: {:?}", config);
     let db_client = Client::new(&config);
+    println!("DB Client: {:?}", db_client);
     let table_name = match get_table_name().await {
         Some(t) => t,
         None => {
@@ -116,10 +181,12 @@ async fn handler(_event: LambdaEvent<Value>) -> Response {
             });
         }
     };
+    println!("Table Name: {}", table_name);
     // 2. Get recipes from db
     let recipes = match get_recipes_from_db(&db_client, &table_name).await {
         Ok(r) => r,
         Err(e) => {
+            println!("Error retrieving recipes: {}", e.to_string());
             return Err(FailureResponse {
                 body: format!("Error retrieving recipes from db: {}", e.to_string())
             });

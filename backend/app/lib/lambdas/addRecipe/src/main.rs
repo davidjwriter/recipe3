@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use futures_util::future::join_all;
 use reqwest::get;
 use select::document::Document;
-use select::predicate::Text;
+use select::predicate::Name;
 use aws_sdk_dynamodb::types::AttributeValue;
 use aws_sdk_dynamodb::{Client};
 use aws_config;
@@ -14,6 +14,8 @@ use uuid::Uuid;
 use std::env;
 use openai_api_rs::v1::api;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
+use scraper::{Html, Selector};
+
 
 
 const PROMPT: &str = "Using this web page content, parse the recipe out and put it in JSON format using this format: {name: <str>, ingredients: [], instructions: [], notes: <str>}";
@@ -67,8 +69,9 @@ async fn get_web_contents(url: &str) -> Response {
     let response = match get(url).await {
         Ok(r) => r,
         Err(e) => {
+            println!("Error reading URL: {:?} {:?}", url, e);
             return Err(FailureResponse {
-                body: format!("Error reading URL: {}", e.to_string())
+                body: format!("Error reading URL: {}", e)
             });
         }
     };
@@ -77,27 +80,41 @@ async fn get_web_contents(url: &str) -> Response {
     let body = match response.text().await {
         Ok(b) => b,
         Err(e) => {
+            println!("Error reading URL contents: {:?}", e);
             return Err(FailureResponse {
-                body: format!("Error reading URL contents: {}", e.to_string())
+                body: format!("Error reading URL contents: {}", e)
             });
         }
     };
+    let document = Html::parse_document(&body);
 
-    // Use the select library to extract text content from the HTML
-    let document = Document::from(body.as_str());
+    // Use CSS selectors to identify the recipe elements
+    let recipe_title_selector = Selector::parse("h1").unwrap();
+    let ingredient_selector = Selector::parse(".recipe-ingredient").unwrap();
+    let instruction_selector = Selector::parse(".recipe-instruction").unwrap();
+    let recipe_page = Selector::parse(".recipe-content").unwrap();
 
-    let mut content = String::new();
+    // Extract the recipe title
+    let recipe_title = document
+        .select(&recipe_title_selector)
+        .next()
+        .map(|element| element.text().collect::<String>())
+        .unwrap_or_else(|| "Recipe title not found".to_owned());
 
-    // Extract text content from all text-based HTML elements
-    for node in document.find(Text) {
-        let text = node.text();
-        content.push_str(&text);
-        content.push('\n');
+    println!("Recipe Title: {}", recipe_title);
+
+    println!("Recipe Contents:");
+    let mut recipe_content_list = Vec::new();
+    for recipe_content in document.select(&recipe_page) {
+        println!("{}", recipe_content.text().collect::<String>());
+        recipe_content_list.push(recipe_content.text().collect::<String>());
     }
 
-    Ok(SuccessResponse {
-        body: content,
-    })
+    let recipe = format!("{} {}", recipe_title, recipe_content_list.join(""));
+
+    return Ok(SuccessResponse {
+        body: recipe
+    });
 }
 
 async fn get_api_key() -> Option<String> {
@@ -116,18 +133,20 @@ async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
             model: chat_completion::GPT4.to_string(),
             messages: vec![chat_completion::ChatCompletionMessage {
                 role: chat_completion::MessageRole::user,
-                content: Some(PROMPT.to_string()),
+                content: Some(format!("{} {}", PROMPT.to_string(), contents)),
                 name: None,
                 function_call: None,
             }],
             functions: None,
             function_call: None
         };
+        println!("Chat Request: {:?}", req);
         let result = match client.chat_completion(req).await {
             Ok(r) => r,
             Err(e) => {
+                println!("Error with OpenAI: {:?}", e);
                 return Err(FailureResponse {
-                    body: format!("Error getting response from OpenAI: {}", e.to_string())
+                    body: format!("Error getting response from OpenAI: {:?}", e)
                 });
             }
         };
@@ -135,6 +154,7 @@ async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
         let generated_content = match &result.choices[0].message.content {
             Some(c) => c,
             None => {
+                println!("Could not get message content");
                 return Err(FailureResponse {
                     body: format!("Could not get message content")
                 })
@@ -142,9 +162,12 @@ async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
         };
         let recipe: Recipe = match serde_json::from_str(&generated_content) {
             Ok(r) => r,
-            Err(e) => return Err(FailureResponse {
-                body: format!("Error parsing JSON {}", e.to_string())
-            }),
+            Err(e) => {
+                println!("Error parsing JSON {:?}", e);
+                return Err(FailureResponse {
+                    body: format!("Error parsing JSON {:?}", e)
+                });
+            }
         };
         return Ok(recipe);
     }
@@ -207,42 +230,40 @@ pub async fn add_to_db(client: &Client, recipe: Recipe, table: &String) -> Resul
 
     println!("Executing request [{request:?}] to add item...");
 
-    let resp = request.send().await?;
+    request.send().await?;
 
-    let attributes = resp.attributes().unwrap();
-
-    let uuid = attributes.get("uuid").cloned();
-    let name = attributes.get("name").cloned();
-    let ingredients = attributes.get("ingredients").cloned();
-    let instructions = attributes.get("instructions").cloned();
-    let notes = attributes.get("notes").cloned();
-
-    println!(
-        "Added recipe {:?}, {:?}, {:?}, {:?}, {:?}",
-        uuid, name, ingredients, instructions, notes
-    );
-
-    Ok(format!(
-        "Added recipe {:?}, {:?}, {:?}, {:?}, {:?}",
-        uuid, name, ingredients, instructions, notes
-    ))
+    Ok(String::from("Recipe Added!"))
 }
 
 
 
 async fn handler(event: LambdaEvent<Value>) -> Response {
     // 1. Get URL passed in
-    let url = match event.payload["url"].as_str() {
+    let url_value: Value = event.payload;
+    println!("URL: {}", url_value);
+
+    let url = match url_value.get("body") {
         Some(u) => u,
         None => {
+            println!("Error: {:?}", url_value);
             return Err(FailureResponse {
-                body: format!("No URL Given")
+                body: format!("URL Parse Error")
+            });
+        }
+    };
+
+    let json_url = match serde_json::from_str::<Value>(url.as_str().unwrap()) {
+        Ok(value) => value["url"].as_str().unwrap().to_owned(),
+        Err(e) => {
+            println!("Error parsing json: {:?}", e);
+            return Err(FailureResponse {
+                body: format!("Error parsing json: {:?}", e)
             });
         }
     };
 
     // 2. Get web contents
-    let contents = get_web_contents(url).await?;
+    let contents = get_web_contents(&json_url).await?;
 
     // 3. Parse recipe from web contents
     let recipe = match parse_recipe(contents.body).await {
@@ -273,4 +294,29 @@ async fn handler(event: LambdaEvent<Value>) -> Response {
             });
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    #[test]
+    fn it_works() {
+        let result = 2 + 2;
+        assert_eq!(result, 4);
+    }
+
+    #[test]
+    fn get_document() {
+        let url = "https://tasty.co/recipe/garlic-bacon-shrimp-alfredo";
+
+        let response = aw!(get_web_contents(url));
+        println!("Response: {:?}", response);
+    }
 }

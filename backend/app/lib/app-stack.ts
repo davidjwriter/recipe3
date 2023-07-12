@@ -5,6 +5,7 @@ import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, RestApi } from 'aws-cdk-lib/aws-apigateway';
 import { AttributeType, Table } from 'aws-cdk-lib/aws-dynamodb';
+import { Duration } from 'aws-cdk-lib';
 
 export class Recipe3Stack extends Stack {
   constructor(app: App, id: string) {
@@ -13,7 +14,7 @@ export class Recipe3Stack extends Stack {
     // Setup our dynamo db table
     const dynamoTable = new Table(this, 'Recipes', {
       partitionKey: {
-        name: 'id',
+        name: 'uuid',
         type: AttributeType.STRING
       },
       readCapacity: 1,
@@ -36,9 +37,11 @@ export class Recipe3Stack extends Stack {
       code: Code.fromAsset('lib/lambdas/addRecipe/target/x86_64-unknown-linux-musl/release/lambda'),
       runtime: Runtime.PROVIDED_AL2,
       handler: 'not.required',
+      timeout: Duration.minutes(5),
       environment: {
         RUST_BACKTRACE: '1',
         TABLE_NAME: 'Recipes',
+        OPEN_AI_API_KEY: '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',
       },
       logRetention: RetentionDays.ONE_WEEK
     });
@@ -57,8 +60,8 @@ export class Recipe3Stack extends Stack {
     });
 
     // Grant the lambda functions write and read access
-    dynamoTable.grantReadData(getRecipes);
-    dynamoTable.grantReadWriteData(addRecipe);
+    dynamoTable.grantFullAccess(getRecipes);
+    dynamoTable.grantFullAccess(addRecipe);
 
     // Integrate lambda functions with an API gateway
     const getRecipesAPI = new LambdaIntegration(getRecipes);
