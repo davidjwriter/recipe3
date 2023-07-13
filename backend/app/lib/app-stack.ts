@@ -6,10 +6,14 @@ import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, RestApi } from 'aws-cdk-lib/aws-apigateway';
 import { AttributeType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Duration } from 'aws-cdk-lib';
+import * as dotenv from 'dotenv';
+import path = require('path');
 
 export class Recipe3Stack extends Stack {
   constructor(app: App, id: string) {
     super(app, id);
+    dotenv.config({ path: path.resolve(__dirname, '.env') });
+    const openAiApiKey = process.env.OPEN_AI_API_KEY || 'NO_API_KEY';
 
     // Setup our dynamo db table
     const dynamoTable = new Table(this, 'Recipes', {
@@ -41,7 +45,7 @@ export class Recipe3Stack extends Stack {
       environment: {
         RUST_BACKTRACE: '1',
         TABLE_NAME: 'Recipes',
-        OPEN_AI_API_KEY: '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',
+        OPEN_AI_API_KEY: openAiApiKey,
       },
       logRetention: RetentionDays.ONE_WEEK
     });

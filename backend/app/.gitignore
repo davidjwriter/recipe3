@@ -5,6 +5,7 @@ node_modules
 bin
 target
 *.lock
+.env
 
 # CDK asset staging directory
 .cdk.staging
