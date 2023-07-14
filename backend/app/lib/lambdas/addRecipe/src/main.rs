@@ -93,6 +93,7 @@ async fn get_web_contents(url: &str) -> Response {
     let ingredient_selector = Selector::parse(".recipe-ingredient").unwrap();
     let instruction_selector = Selector::parse(".recipe-instruction").unwrap();
     let recipe_page = Selector::parse(".recipe-content").unwrap();
+    let mariyum_recipe_content = Selector::parse(".wprm-recipe-container").unwrap();
 
     // Extract the recipe title
     let recipe_title = document
@@ -106,6 +107,11 @@ async fn get_web_contents(url: &str) -> Response {
     println!("Recipe Contents:");
     let mut recipe_content_list = Vec::new();
     for recipe_content in document.select(&recipe_page) {
+        println!("{}", recipe_content.text().collect::<String>());
+        recipe_content_list.push(recipe_content.text().collect::<String>());
+    }
+
+    for recipe_content in document.select(&mariyum_recipe_content) {
         println!("{}", recipe_content.text().collect::<String>());
         recipe_content_list.push(recipe_content.text().collect::<String>());
     }
@@ -313,10 +319,19 @@ mod tests {
     }
 
     #[test]
-    fn get_document() {
+    fn get_document_tasty() {
         let url = "https://tasty.co/recipe/garlic-bacon-shrimp-alfredo";
 
         let response = aw!(get_web_contents(url));
         println!("Response: {:?}", response);
     }
+
+    #[test]
+    fn get_document_mariyum() {
+        let url = "https://mxriyum.com/lobster-mac-cheese/";
+
+        let response = aw!(get_web_contents(url));
+        println!("Response: {:?}", response);
+    }
+
 }
