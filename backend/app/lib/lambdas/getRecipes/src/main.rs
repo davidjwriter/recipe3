@@ -39,6 +39,7 @@ pub struct FailureResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Recipe {
+    pub uuid: String,
     pub name: String,
     pub ingredients: Vec<String>,
     pub instructions: Vec<String>,
@@ -48,6 +49,7 @@ pub struct Recipe {
 impl From<&HashMap<String, AttributeValue>> for Recipe {
     fn from(value: &HashMap<String, AttributeValue>) -> Self {
         let mut recipe = Recipe {
+            uuid: as_string(value.get("uuid"), &String::from("UUID")),
             name: as_string(value.get("name"), &String::from("NAME")),
             ingredients: split_string(as_string(value.get("ingredients"), &String::from("INGREDIENTS"))),
             instructions: split_string(as_string(value.get("instructions"), &String::from("INSTRUCTIONS"))),

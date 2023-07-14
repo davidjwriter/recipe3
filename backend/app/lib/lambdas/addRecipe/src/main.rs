@@ -218,8 +218,8 @@ async fn generate_uuid() -> String {
  * instructions: []
  * notes: string
  */
-pub async fn add_to_db(client: &Client, recipe: Recipe, table: &String) -> Result<String, Error> {
-    let uuid = AttributeValue::S(generate_uuid().await);
+pub async fn add_to_db(client: &Client, recipe: Recipe, url: &str, table: &String) -> Result<String, Error> {
+    let uuid = AttributeValue::S(url.to_string());
     let name = AttributeValue::S(recipe.name);
     let ingredients = AttributeValue::S(join_strings(recipe.ingredients).await);
     let instructions = AttributeValue::S(join_strings(recipe.instructions).await);
@@ -288,7 +288,7 @@ async fn handler(event: LambdaEvent<Value>) -> Response {
             });
         }
     };
-    match add_to_db(&db_client, recipe, &table_name).await {
+    match add_to_db(&db_client, recipe, &json_url, &table_name).await {
         Ok(_) => {
             return Ok(SuccessResponse {
                 body: String::from("Success!"),
