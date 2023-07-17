@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
-use lambda_runtime::{service_fn, LambdaEvent, Error};
+use lambda_runtime::{LambdaEvent};
 use std::collections::HashMap;
 use aws_sdk_dynamodb::types::AttributeValue;
 use std::env;
@@ -11,6 +11,7 @@ use clap::Parser;
 use futures_util::StreamExt;
 use rayon::iter::ParallelIterator;
 use std::iter::Iterator;
+use lambda_http::{service_fn, Response, Body, Error, Request};
 
 
 #[derive(Debug)]
@@ -22,13 +23,11 @@ pub struct Opt {
     pub verbose: bool,
 }
 
-#[derive(Deserialize)]
-pub struct Request {
-    pub _body: String,
-}
 
 #[derive(Debug, Serialize)]
 pub struct SuccessResponse {
+    pub status_code: u8,
+    pub headers: HashMap<String, String>,
     pub body: String,
 }
 
@@ -44,6 +43,7 @@ pub struct Recipe {
     pub ingredients: Vec<String>,
     pub instructions: Vec<String>,
     pub notes: String,
+    pub summary: String,
 }
 
 impl From<&HashMap<String, AttributeValue>> for Recipe {
@@ -53,7 +53,8 @@ impl From<&HashMap<String, AttributeValue>> for Recipe {
             name: as_string(value.get("name"), &String::from("NAME")),
             ingredients: split_string(as_string(value.get("ingredients"), &String::from("INGREDIENTS"))),
             instructions: split_string(as_string(value.get("instructions"), &String::from("INSTRUCTIONS"))),
-            notes: as_string(value.get("notes"), &String::from("NOTES"))
+            notes: as_string(value.get("notes"), &String::from("NOTES")),
+            summary: as_string(value.get("summary"), &String::from("SUMMARY")),
         };
         recipe
     }
@@ -70,12 +71,10 @@ impl std::fmt::Display for FailureResponse {
 // returned by `lambda_runtime::run(func).await` in `fn main`.
 impl std::error::Error for FailureResponse {}
 
-type Response = Result<SuccessResponse, FailureResponse>;
-
 #[tokio::main]
-async fn main() -> Result<(), lambda_runtime::Error> {
+async fn main() -> Result<(), Error> {
     let func = service_fn(handler);
-    lambda_runtime::run(func).await?;
+    lambda_http::run(func).await?;
 
     Ok(())
 }
@@ -158,7 +157,7 @@ async fn get_recipes_from_db(client: &Client, table_name: &str) -> Result<Vec<Re
     return Ok(recipes);
 }
 
-async fn handler(_event: LambdaEvent<Value>) -> Response {
+async fn handler(_event: Request) -> Result<Response<String>, Error> {
     // 1. Create db client and get table name from env
     let opt = Opt {
         region: Some("us-east-1".to_string()),
@@ -167,9 +166,10 @@ async fn handler(_event: LambdaEvent<Value>) -> Response {
     let config = match make_config(opt).await {
         Ok(c) => c,
         Err(e) => {
-            return Err(FailureResponse {
-                body: format!("Error making config: {}", e.to_string())
-            });
+            return Ok(Response::builder()
+            .status(500)
+            .body(format!("Error making config: {}", e.to_string()))?);
+            
         },
     };
     println!("Config: {:?}", config);
@@ -178,9 +178,9 @@ async fn handler(_event: LambdaEvent<Value>) -> Response {
     let table_name = match get_table_name().await {
         Some(t) => t,
         None => {
-            return Err(FailureResponse {
-                body: String::from("TABLE_NAME not set")
-            });
+            return Ok(Response::builder()
+            .status(500)
+            .body(String::from("TABLE_NAME not set"))?);
         }
     };
     println!("Table Name: {}", table_name);
@@ -189,17 +189,20 @@ async fn handler(_event: LambdaEvent<Value>) -> Response {
         Ok(r) => r,
         Err(e) => {
             println!("Error retrieving recipes: {}", e.to_string());
-            return Err(FailureResponse {
-                body: format!("Error retrieving recipes from db: {}", e.to_string())
-            });
+            let resp = Response::builder()
+                .status(500)
+                .body(format!("Error retrieving recipes from db: {}", e.to_string()))?;
+            return Ok(resp);
         }
     };
 
     // 3. Return said recipes in JSON format
     let json_string = serde_json::to_string(&recipes).unwrap();
+    let mut cors = HashMap::new();
+    cors.insert(String::from("Access-Control-Allow-Origin"), String::from("*"));
 
-
-    Ok(SuccessResponse {
-        body: json_string,
-    })
+    Ok(Response::builder()
+        .status(200)
+        .header("Access-Control-Allow-Origin", "*")
+        .body(json_string)?)
 }

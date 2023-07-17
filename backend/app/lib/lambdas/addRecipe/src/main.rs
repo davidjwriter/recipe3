@@ -1,32 +1,38 @@
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
-use lambda_runtime::{service_fn, LambdaEvent, Error};
+use lambda_runtime::{LambdaEvent};
 use std::collections::HashMap;
-use futures_util::future::join_all;
-use reqwest::get;
-use select::document::Document;
-use select::predicate::Name;
-use aws_sdk_dynamodb::types::AttributeValue;
-use aws_sdk_dynamodb::{Client};
-use aws_config;
-use uuid::Uuid;
+use aws_sdk_dynamodb::types::{AttributeValue};
+use aws_sdk_dynamodb::operation::get_item::GetItemInput;
 use std::env;
-use openai_api_rs::v1::api;
-use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
-use scraper::{Html, Selector};
+use aws_config::{meta::region::RegionProviderChain, SdkConfig};
+use aws_sdk_dynamodb::{config::Region, meta::PKG_VERSION};
+use aws_sdk_dynamodb::Client as DbClient;
+use aws_sdk_sns::Client as SnsClient;
+use futures_util::StreamExt;
+use rayon::iter::ParallelIterator;
+use std::iter::Iterator;
+use lambda_http::{service_fn, Response, Body, Error, Request};
 
 
+#[derive(Debug)]
+pub struct Opt {
+    /// The AWS Region.
+    pub region: Option<String>,
+    /// Whether to display additional information.
+    pub verbose: bool,
+}
 
-const PROMPT: &str = "Using this web page content, parse the recipe out and put it in JSON format using this format: {name: <str>, ingredients: [], instructions: [], notes: <str>}";
-
-#[derive(Deserialize)]
-pub struct Request {
-    pub _body: String,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct URLRequest {
+    pub url: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SuccessResponse {
+    pub status_code: u8,
+    pub headers: HashMap<String, String>,
     pub body: String,
 }
 
@@ -37,10 +43,26 @@ pub struct FailureResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Recipe {
+    pub uuid: String,
     pub name: String,
     pub ingredients: Vec<String>,
     pub instructions: Vec<String>,
     pub notes: String,
+    pub summary: String,
+}
+
+impl From<&HashMap<String, AttributeValue>> for Recipe {
+    fn from(value: &HashMap<String, AttributeValue>) -> Self {
+        let mut recipe = Recipe {
+            uuid: as_string(value.get("uuid"), &String::from("UUID")),
+            name: as_string(value.get("name"), &String::from("NAME")),
+            ingredients: split_string(as_string(value.get("ingredients"), &String::from("INGREDIENTS"))),
+            instructions: split_string(as_string(value.get("instructions"), &String::from("INSTRUCTIONS"))),
+            notes: as_string(value.get("notes"), &String::from("NOTES")),
+            summary: as_string(value.get("summary"), &String::from("SUMMARY")),
+        };
+        recipe
+    }
 }
 
 // Implement Display for the Failure response so that we can then implement Error.
@@ -54,149 +76,46 @@ impl std::fmt::Display for FailureResponse {
 // returned by `lambda_runtime::run(func).await` in `fn main`.
 impl std::error::Error for FailureResponse {}
 
-type Response = Result<SuccessResponse, FailureResponse>;
-
 #[tokio::main]
-async fn main() -> Result<(), lambda_runtime::Error> {
+async fn main() -> Result<(), Error> {
     let func = service_fn(handler);
-    lambda_runtime::run(func).await?;
+    lambda_http::run(func).await?;
 
     Ok(())
 }
 
-async fn get_web_contents(url: &str) -> Response {
-    // Send a GET request to the URL
-    let response = match get(url).await {
-        Ok(r) => r,
-        Err(e) => {
-            println!("Error reading URL: {:?} {:?}", url, e);
-            return Err(FailureResponse {
-                body: format!("Error reading URL: {}", e)
-            });
+pub fn make_region_provider(region: Option<String>) -> RegionProviderChain {
+    RegionProviderChain::first_try(region.map(Region::new))
+        .or_default_provider()
+        .or_else(Region::new("us-east-1"))
+}
+
+pub async fn make_config(opt: Opt) -> Result<SdkConfig, Error> {
+    let region_provider = make_region_provider(opt.region);
+
+    println!();
+    if opt.verbose {
+        println!("DynamoDB client version: {}", PKG_VERSION);
+        println!(
+            "Region:                  {}",
+            region_provider.region().await.unwrap().as_ref()
+        );
+        println!();
+    }
+
+    Ok(aws_config::from_env().region(region_provider).load().await)
+}
+
+fn as_string(val: Option<&AttributeValue>, default: &String) -> String {
+    if let Some(v) = val {
+        if let Ok(s) = v.as_s() {
+            return s.to_owned();
         }
-    };
-
-    // Read the response body as text
-    let body = match response.text().await {
-        Ok(b) => b,
-        Err(e) => {
-            println!("Error reading URL contents: {:?}", e);
-            return Err(FailureResponse {
-                body: format!("Error reading URL contents: {}", e)
-            });
-        }
-    };
-    let document = Html::parse_document(&body);
-
-    // Use CSS selectors to identify the recipe elements
-    let recipe_title_selector = Selector::parse("h1").unwrap();
-    let ingredient_selector = Selector::parse(".recipe-ingredient").unwrap();
-    let instruction_selector = Selector::parse(".recipe-instruction").unwrap();
-    let recipe_page = Selector::parse(".recipe-content").unwrap();
-    let mariyum_recipe_content = Selector::parse(".wprm-recipe-container").unwrap();
-
-    // Extract the recipe title
-    let recipe_title = document
-        .select(&recipe_title_selector)
-        .next()
-        .map(|element| element.text().collect::<String>())
-        .unwrap_or_else(|| "Recipe title not found".to_owned());
-
-    println!("Recipe Title: {}", recipe_title);
-
-    println!("Recipe Contents:");
-    let mut recipe_content_list = Vec::new();
-    for recipe_content in document.select(&recipe_page) {
-        println!("{}", recipe_content.text().collect::<String>());
-        recipe_content_list.push(recipe_content.text().collect::<String>());
     }
-
-    for recipe_content in document.select(&mariyum_recipe_content) {
-        println!("{}", recipe_content.text().collect::<String>());
-        recipe_content_list.push(recipe_content.text().collect::<String>());
-    }
-
-    let recipe = format!("{} {}", recipe_title, recipe_content_list.join(""));
-
-    return Ok(SuccessResponse {
-        body: recipe
-    });
+    default.to_owned()
 }
 
-async fn get_api_key() -> Option<String> {
-    env::var("OPEN_AI_API_KEY").ok()
-}
-
-async fn get_table_name() -> Option<String> {
-    env::var("TABLE_NAME").ok()
-}
-
-async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
-    let open_ai_api_key = get_api_key().await;
-    if let Some(api_key) = open_ai_api_key {
-        let client = api::Client::new(api_key);
-        let req = ChatCompletionRequest {
-            model: chat_completion::GPT4.to_string(),
-            messages: vec![chat_completion::ChatCompletionMessage {
-                role: chat_completion::MessageRole::user,
-                content: Some(format!("{} {}", PROMPT.to_string(), contents)),
-                name: None,
-                function_call: None,
-            }],
-            functions: None,
-            function_call: None
-        };
-        println!("Chat Request: {:?}", req);
-        let result = match client.chat_completion(req).await {
-            Ok(r) => r,
-            Err(e) => {
-                println!("Error with OpenAI: {:?}", e);
-                return Err(FailureResponse {
-                    body: format!("Error getting response from OpenAI: {:?}", e)
-                });
-            }
-        };
-        println!("{:?}", result.choices[0].message.content);
-        let generated_content = match &result.choices[0].message.content {
-            Some(c) => c,
-            None => {
-                println!("Could not get message content");
-                return Err(FailureResponse {
-                    body: format!("Could not get message content")
-                })
-            },
-        };
-        let recipe: Recipe = match serde_json::from_str(&generated_content) {
-            Ok(r) => r,
-            Err(e) => {
-                println!("Error parsing JSON {:?}", e);
-                return Err(FailureResponse {
-                    body: format!("Error parsing JSON {:?}", e)
-                });
-            }
-        };
-        return Ok(recipe);
-    }
-    return Err(FailureResponse {
-        body: String::from("API Key Not Set")
-    });
-}
-
-async fn join_strings(strings: Vec<String>) -> String {
-    strings
-        .iter()
-        .map(|string| {
-            let escaped_string = string
-                .replace("\\", "\\\\") // Escape backslashes
-                .replace(",", "\\,") // Escape commas
-                .replace(";", "\\;"); // Escape semicolons
-            escaped_string
-        })
-        .collect::<Vec<String>>()
-        .join(";")
-}
-
-async fn split_string(string: String) -> Vec<String> {
+fn split_string(string: String) -> Vec<String> {
     let escaped_strings: Vec<String> = string
         .split(";")
         .map(|substring| substring.replace("\\;", ";").replace("\\,", ",").replace("\\\\", "\\"))
@@ -205,133 +124,110 @@ async fn split_string(string: String) -> Vec<String> {
     escaped_strings
 }
 
-async fn generate_uuid() -> String {
-    Uuid::new_v4().to_string()
+async fn get_table_name() -> Option<String> {
+    env::var("TABLE_NAME").ok()
 }
 
-
-/**
- * Data format:
- * primary_key: uuid
- * name: string
- * ingredients: []
- * instructions: []
- * notes: string
- */
-pub async fn add_to_db(client: &Client, recipe: Recipe, url: &str, table: &String) -> Result<String, Error> {
-    let uuid = AttributeValue::S(url.to_string());
-    let name = AttributeValue::S(recipe.name);
-    let ingredients = AttributeValue::S(join_strings(recipe.ingredients).await);
-    let instructions = AttributeValue::S(join_strings(recipe.instructions).await);
-    let notes = AttributeValue::S(recipe.notes);
-
-    let request = client
-        .put_item()
-        .table_name(table)
-        .item("uuid", uuid)
-        .item("name", name)
-        .item("ingredients", ingredients)
-        .item("instructions", instructions)
-        .item("notes", notes);
-
-    println!("Executing request [{request:?}] to add item...");
-
-    request.send().await?;
-
-    Ok(String::from("Recipe Added!"))
+async fn get_sns_arn() -> Option<String> {
+    env::var("SNS_ARN").ok()
 }
 
+async fn get_recipe_from_db(client: &DbClient, table_name: &str, url: &str) -> Result<Option<Recipe>, Error> {
+    let pk = AttributeValue::S(url.to_string());
 
+    // let input: GetItemInput = GetItemInput::builder()
+    //     .table_name(table_name)
+    //     .key("uuid".to_string(), pk)
+    //     .build()?;
+    
+    let response = client.get_item()
+        .table_name(table_name)
+        .key("uuid".to_string(), pk)
+        .send().await?;
+    // let response = client.get_item(input).await?;
 
-async fn handler(event: LambdaEvent<Value>) -> Response {
-    // 1. Get URL passed in
-    let url_value: Value = event.payload;
-    println!("URL: {}", url_value);
+    if let Some(recipe) = response.item {
+        return Ok(Some(Recipe::from(&recipe)));
+    } else {
+        return Ok(None);
+    }
+}
 
-    let url = match url_value.get("body") {
-        Some(u) => u,
-        None => {
-            println!("Error: {:?}", url_value);
-            return Err(FailureResponse {
-                body: format!("URL Parse Error")
-            });
-        }
+async fn handler(request: Request) -> Result<Response<String>, Error> {
+    // 1. Create db client and get table name from env
+    let opt = Opt {
+        region: Some("us-east-1".to_string()),
+        verbose: true,
     };
-
-    let json_url = match serde_json::from_str::<Value>(url.as_str().unwrap()) {
-        Ok(value) => value["url"].as_str().unwrap().to_owned(),
+    let config = match make_config(opt).await {
+        Ok(c) => c,
         Err(e) => {
-            println!("Error parsing json: {:?}", e);
-            return Err(FailureResponse {
-                body: format!("Error parsing json: {:?}", e)
-            });
-        }
+            return Ok(Response::builder()
+            .status(500)
+            .body(format!("Error making config: {}", e.to_string()))?);
+            
+        },
     };
-
-    // 2. Get web contents
-    let contents = get_web_contents(&json_url).await?;
-
-    // 3. Parse recipe from web contents
-    let recipe = match parse_recipe(contents.body).await {
-        Ok(r) => r,
-        Err(e) => return Err(e),
-    };
-
-    // 4. Add recipe to db
-    let config = aws_config::load_from_env().await;
-    let db_client = Client::new(&config);
+    let db_client = DbClient::new(&config);
+    println!("DB Client: {:?}", db_client);
     let table_name = match get_table_name().await {
         Some(t) => t,
         None => {
-            return Err(FailureResponse {
-                body: String::from("TABLE_NAME not set")
-            });
+            return Ok(Response::builder()
+            .status(500)
+            .body(String::from("TABLE_NAME not set"))?);
         }
     };
-    match add_to_db(&db_client, recipe, &json_url, &table_name).await {
-        Ok(_) => {
-            return Ok(SuccessResponse {
-                body: String::from("Success!"),
-            });
-        },
-        Err(e) => {
-            return Err(FailureResponse {
-                body: format!("Failed! {}", e.to_string()),
-            });
-        }
-    };
-}
+    println!("Table Name: {}", table_name);
+    // 2. Get URL from request
+    let body = request.body();
+    let url: URLRequest = serde_json::from_slice(&body)?;
+    let url_value = &url.url;
+    println!("URL: {}", url_value);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    let result = get_recipe_from_db(&db_client, &table_name, url_value).await?;
 
-    macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
+    if let Some(recipe) = result {
+        println!("Found recipe");
+        let json_string = serde_json::to_string(&recipe).unwrap();
+        Ok(Response::builder()
+        .status(200)
+        .header("Access-Control-Allow-Origin", "*")
+        .body(json_string)?)
+    } else {
+        // 4. Publish to SNS
+        let sns_arn = match get_sns_arn().await {
+            Some(t) => t,
+            None => {
+                return Ok(Response::builder()
+                .status(500)
+                .body(String::from("SNS_ARN not set"))?);
+            }
         };
+        println!("SNS ARN: {:?}", sns_arn);
+        let sns_client = SnsClient::new(&config);
+        let message = serde_json::to_string(&url).unwrap();
+        println!("Message: {}", message);
+        match sns_client
+            .publish()
+            .topic_arn(sns_arn)
+            .message(message)
+            .send()
+            .await {
+                Ok(s) => {
+                    println!("SNS Publish Success! {:?}", s);
+                    return Ok(Response::builder()
+                    .status(201)
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(String::from("Published New Recipe!"))?);
+                },
+                Err(e) => {
+                    println!("SNS Publish Failure: {:?}", e);
+                    return Ok(Response::builder()
+                        .status(500)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(format!("SNS Publish Failure: {:?}", e))?);
+                }
+            };
     }
-
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-
-    #[test]
-    fn get_document_tasty() {
-        let url = "https://tasty.co/recipe/garlic-bacon-shrimp-alfredo";
-
-        let response = aw!(get_web_contents(url));
-        println!("Response: {:?}", response);
-    }
-
-    #[test]
-    fn get_document_mariyum() {
-        let url = "https://mxriyum.com/lobster-mac-cheese/";
-
-        let response = aw!(get_web_contents(url));
-        println!("Response: {:?}", response);
-    }
-
 }

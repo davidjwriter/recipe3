@@ -22,6 +22,7 @@ aws-sdk-dynamodb = { git = "https://github.com/awslabs/aws-sdk-rust", branch = "
 uuid = { version="1.4.0", features=["v4", "fast-rng", "macro-diagnostics"] }
 openai-api-rs = "0.1.8"
 clap = "4.3.11"
+lambda_http = "0.8.1"
 
 
 [[bin]]

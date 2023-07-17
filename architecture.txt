@@ -1,0 +1,6 @@
+* 3 folders: backend, frontend, nft
+* backend: APIGateway, Lambda, SNS, DynamoDB
+    * APIGateway: getRecipes, addRecipe
+    * getRecipes -> getRecipes Lambda -> requests all recipes from DynamoDB
+    * addRecipe -> addRecipe Lambda -> sends SNS message -> addRecipeWorker Lambda -> stores in DynamoDB
+* frontend: React
