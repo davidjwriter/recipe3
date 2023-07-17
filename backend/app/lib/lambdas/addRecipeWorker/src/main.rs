@@ -14,9 +14,17 @@ use uuid::Uuid;
 use std::env;
 use openai_api_rs::v1::api;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
+use openai_api_rs::v1::image::ImageGenerationRequest;
 use scraper::{Html, Selector};
 use lambda_http::{Response, Body, Error, Request};
 use lambda_runtime::{service_fn, LambdaEvent};
+use tokio::fs::File;
+use reqwest::{multipart};
+use tokio_util::codec::{BytesCodec, FramedRead};
+use std::path::Path;
+use std::io::prelude::*;
+use base64;
+use tokio::io::AsyncWriteExt;
 
 
 const PROMPT: &str = "Using this web page content, parse the recipe out, summarize it, and put it in JSON format using this format: {name: <str>, ingredients: [], instructions: [], notes: <str>, summary: <str>}";
@@ -130,6 +138,109 @@ async fn get_api_key() -> Option<String> {
 async fn get_table_name() -> Option<String> {
     env::var("TABLE_NAME").ok()
 }
+
+async fn generate_recipe_image(summary: &String) -> Result<String, FailureResponse> {
+    let open_ai_api_key = get_api_key().await;
+    if let Some(api_key) = open_ai_api_key {
+        let client = api::Client::new(api_key);
+        let req = ImageGenerationRequest {
+            prompt: summary.clone(),
+            n: None,
+            size: None,
+            response_format: Some("b64_json".to_string()),
+            user: None,
+        };
+        println!("Image gen request: {:?}", req);
+        let result = match client.image_generation(req).await {
+            Ok(r) => r,
+            Err(e) => {
+                println!("Error with OpenAI: {:?}", e);
+                return Err(FailureResponse {
+                    body: format!("Error getting response from OpenAI: {:?}", e)
+                });
+            }
+        };
+        return Ok(result.data[0].url.clone());
+    }
+    return Err(FailureResponse {
+        body: String::from("API Key Not Set")
+    });
+}
+
+async fn upload_to_arweave(image: String) -> Result<String, Error> {
+    let decoded_image = base64::decode(image).unwrap();
+
+    let mut file = File::create("/tmp/image.jpg").await.unwrap(); // Specify the desired file path and extension here
+    file.write_all(&decoded_image).await.unwrap();
+
+    // Step 2: Prepare and send the HTTP request with the file
+    let client = reqwest::Client::new();
+    let uri = "http://arweaveservice-env.eba-jbui8icp.us-east-1.elasticbeanstalk.com/upload";
+
+    // Get file stream setup
+    let stream = FramedRead::new(file, BytesCodec::new());
+    let file_body = reqwest::Body::wrap_stream(stream);
+
+    let form_part = multipart::Part::stream(file_body)
+        .file_name("/tmp/image.jpg".to_string())
+        .mime_str("image/jpeg")
+        .expect("Problem creating image part");
+
+    let form = multipart::Form::new().part("book", form_part);
+
+    let response = client
+        .post(uri)
+        .multipart(form)
+        .send();
+
+    let image_url_resp = response
+        .await
+        .expect("Problem Getting Image Response");
+    let image_url = image_url_resp
+        .text()
+        .await
+        .expect("Problem Parsing Image Response");
+
+    Ok(image_url)
+}
+
+// async fn upload_to_arweave2(image: String) -> Result<String, Error> {
+//     // Step 1: Decode Base64 image and create a file
+//     let decoded_image = base64::decode(image).unwrap();
+
+//     let mut file = File::create("/tmp/image.jpg").await.unwrap(); // Specify the desired file path and extension here
+//     file.write_all(&decoded_image).unwrap();
+
+//     // Step 2: Prepare and send the HTTP request with the file
+//     let client = reqwest::Client::new();
+//     let uri = "http://arweaveservice-env.eba-jbui8icp.us-east-1.elasticbeanstalk.com/upload";
+
+//     let content_length = std::fs::metadata(&file.path)
+//         .expect("Problem getting metadata of image path")
+//         .len();
+
+//     let image_part = multipart::Part::stream_with_length(file, content_length)
+//         .file_name("/tmp/image.jpg".to_string())
+//         .mime_str(&"image/jpeg".to_string())
+//         .expect("Problem creating image part");
+
+//     let form = multipart::Form::new().part("book", image_part);
+
+//     let response = client
+//         .post(uri)
+//         .multipart(form)
+//         .send();
+
+//     let image_url_resp = response
+//         .await
+//         .expect("Problem Getting Image Response");
+//     let image_url = image_url_resp
+//         .text()
+//         .await
+//         .expect("Problem Parsing Image Response");
+
+//     Ok(image_url)
+// }
 
 async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
     let open_ai_api_key = get_api_key().await;
@@ -265,7 +376,16 @@ async fn worker(body: &str) -> Result<String, Error> {
         },
     };
 
-    // 4. Add recipe to db
+    // 4. Generate recipe image
+    let image_url = match generate_recipe_image(&recipe.summary).await {
+        Ok(url) => url,
+        Err(e) => {
+            println!("Error generating image: {:?}", e);
+            String::from("recipeurl")
+        }
+    };
+
+    // 5. Add recipe to db
     let config = aws_config::load_from_env().await;
     let db_client = Client::new(&config);
     let table_name = match get_table_name().await {

@@ -12,7 +12,7 @@ simple_logger = "1.11.0"
 tokio = {version = "1", features = ["full"]}
 rayon = "1.6.1"
 time = "0.3.17"
-reqwest = { version = "0.11.14", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.11.14", default-features = false, features = ["rustls-tls", "json", "multipart", "stream"] }
 openssl = { version = "0.10", features = ["vendored"] }
 futures-util = "0.3.27"
 hyper-native-tls = "0.3.0"
@@ -25,6 +25,8 @@ scraper = "0.17.1"
 tokio-test = "0.4.2"
 lambda_http = "0.8.1"
 aws_lambda_events = "0.10.0"
+base64 = "0.21.2"
+tokio-util = { version="0.7.8", features=["codec"] }
 
 [[bin]]
 name = "bootstrap"
