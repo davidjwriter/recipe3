@@ -49,6 +49,7 @@ pub struct Recipe {
     pub instructions: Vec<String>,
     pub notes: String,
     pub summary: String,
+    pub image: String,
 }
 
 impl From<&HashMap<String, AttributeValue>> for Recipe {
@@ -60,6 +61,7 @@ impl From<&HashMap<String, AttributeValue>> for Recipe {
             instructions: split_string(as_string(value.get("instructions"), &String::from("INSTRUCTIONS"))),
             notes: as_string(value.get("notes"), &String::from("NOTES")),
             summary: as_string(value.get("summary"), &String::from("SUMMARY")),
+            image: as_string(value.get("image"), &String::from("IMAGE"))
         };
         recipe
     }
@@ -134,17 +136,11 @@ async fn get_sns_arn() -> Option<String> {
 
 async fn get_recipe_from_db(client: &DbClient, table_name: &str, url: &str) -> Result<Option<Recipe>, Error> {
     let pk = AttributeValue::S(url.to_string());
-
-    // let input: GetItemInput = GetItemInput::builder()
-    //     .table_name(table_name)
-    //     .key("uuid".to_string(), pk)
-    //     .build()?;
     
     let response = client.get_item()
         .table_name(table_name)
         .key("uuid".to_string(), pk)
         .send().await?;
-    // let response = client.get_item(input).await?;
 
     if let Some(recipe) = response.item {
         return Ok(Some(Recipe::from(&recipe)));
@@ -191,17 +187,17 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
         println!("Found recipe");
         let json_string = serde_json::to_string(&recipe).unwrap();
         Ok(Response::builder()
-        .status(200)
-        .header("Access-Control-Allow-Origin", "*")
-        .body(json_string)?)
+            .status(200)
+            .header("Access-Control-Allow-Origin", "*")
+            .body(json_string)?)
     } else {
         // 4. Publish to SNS
         let sns_arn = match get_sns_arn().await {
             Some(t) => t,
             None => {
                 return Ok(Response::builder()
-                .status(500)
-                .body(String::from("SNS_ARN not set"))?);
+                    .status(500)
+                    .body(String::from("SNS_ARN not set"))?);
             }
         };
         println!("SNS ARN: {:?}", sns_arn);
@@ -217,9 +213,9 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
                 Ok(s) => {
                     println!("SNS Publish Success! {:?}", s);
                     return Ok(Response::builder()
-                    .status(201)
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(String::from("Published New Recipe!"))?);
+                        .status(201)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(String::from("Published New Recipe!"))?);
                 },
                 Err(e) => {
                     println!("SNS Publish Failure: {:?}", e);

@@ -44,6 +44,7 @@ pub struct Recipe {
     pub instructions: Vec<String>,
     pub notes: String,
     pub summary: String,
+    pub image: String,
 }
 
 impl From<&HashMap<String, AttributeValue>> for Recipe {
@@ -55,6 +56,7 @@ impl From<&HashMap<String, AttributeValue>> for Recipe {
             instructions: split_string(as_string(value.get("instructions"), &String::from("INSTRUCTIONS"))),
             notes: as_string(value.get("notes"), &String::from("NOTES")),
             summary: as_string(value.get("summary"), &String::from("SUMMARY")),
+            image: as_string(value.get("image"), &String::from("IMAGE")),
         };
         recipe
     }
