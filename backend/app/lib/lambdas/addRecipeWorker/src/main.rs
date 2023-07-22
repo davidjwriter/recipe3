@@ -28,6 +28,10 @@ use base64;
 use tokio::io::AsyncWriteExt;
 use dotenv::dotenv;
 use std::any::Any;
+use aws_sdk_s3::Client as s3Client;
+use aws_sdk_s3::operation::put_object::{PutObjectError, PutObjectOutput};
+use aws_sdk_s3::{error::SdkError, primitives::ByteStream};
+use aws_sdk_s3::types::ObjectCannedAcl;
 
 
 const PROMPT: &str = "Using this web page content, parse the recipe out, summarize it, and put it in JSON format using this format: {name: <str>, ingredients: [], instructions: [], notes: <str>, summary: <str>}";
@@ -150,6 +154,10 @@ async fn get_table_name() -> Option<String> {
     env::var("TABLE_NAME").ok()
 }
 
+async fn get_bucket_name() -> Option<String> {
+    env::var("BUCKET_NAME").ok()
+}
+
 async fn generate_recipe_image(summary: &String, title: &String) -> Result<String, FailureResponse> {
     let open_ai_api_key = get_api_key().await;
     if let Some(api_key) = open_ai_api_key {
@@ -242,6 +250,24 @@ async fn upload_to_arweave(image: String) -> Result<String, Error> {
         .expect("Problem Parsing Image Response");
 
     Ok(image_url)
+}
+
+async fn upload_to_s3(image: String, client: &s3Client, region: String) -> Result<String, Error> {
+    let decoded_image = base64::decode(image).unwrap();
+    let file_name = format!("{}.jpg", generate_uuid().await);
+    let mut file = File::create(&format!("/tmp/{}", file_name).to_string()).await.unwrap(); // Specify the desired file path and extension here
+    file.write_all(&decoded_image).await.unwrap();
+    let bucket_name = get_bucket_name().await.unwrap();
+    let body = ByteStream::from_path(Path::new(&format!("/tmp/{}", file_name).to_string())).await;
+    client
+        .put_object()
+        .bucket(bucket_name.clone())
+        .key(file_name.clone())
+        .body(body.unwrap())
+        .send()
+        .await?;
+    Ok(format!("https://{}.s3.{}.amazonaws.com/{}", bucket_name, region, file_name))
+
 }
 
 async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
@@ -359,6 +385,8 @@ pub async fn add_to_db(client: &Client, recipe: Recipe, url: &str, image_url: &s
 }
 
 async fn worker(body: &str) -> Result<String, Error> {
+    let config = aws_config::load_from_env().await;
+
     let url: URLRequest = match serde_json::from_str(&body) {
         Ok(u) => u,
         Err(e) => {
@@ -381,8 +409,10 @@ async fn worker(body: &str) -> Result<String, Error> {
     };
 
     // 4. Generate recipe image
+    let s3_client = s3Client::new(&config);
+    let region = config.region().unwrap().as_ref();
     let image_url = match generate_recipe_image(&recipe.summary, &recipe.name).await {
-        Ok(url) => match upload_to_arweave(url).await {
+        Ok(url) => match upload_to_s3(url, &s3_client, region.to_string()).await {
             Ok(u) => u,
             Err(e) => {
                 println!("Error uploading to arweave: {:?}", e);
@@ -396,7 +426,6 @@ async fn worker(body: &str) -> Result<String, Error> {
     };
 
     // 5. Add recipe to db
-    let config = aws_config::load_from_env().await;
     let db_client = Client::new(&config);
     let table_name = match get_table_name().await {
         Some(t) => t,
@@ -473,23 +502,30 @@ mod tests {
         let content = String::from("These Cinnamon Rolls with Cream Cheese Frosting are a delicious treat made with a soft and fluffy dough rolled with a sweet and aromatic filling. The dough is prepared using a yeast mixture and a combination of sugar, eggs, flour, salt, and melted butter. The filling is made with butter, brown sugar, cinnamon, cloves, and nutmeg. The cream cheese frosting adds a creamy and tangy element to the rolls. Enjoy these homemade cinnamon rolls fresh from the oven with a delectable cream cheese frosting!");
         let title = String::from("Cinnamon Rolls");
         let response = aw!(generate_recipe_image(&content, &title));
-        let arweave_url = aw!(upload_to_arweave(response.unwrap()));
-        println!("Arweave URL: {:?}", arweave_url);
+        let config = aw!(aws_config::load_from_env());
+        let s3_client = s3Client::new(&config);
+        let region = config.region().unwrap().as_ref();
+        let arweave_url = aw!(upload_to_s3(response.unwrap(), &s3_client, region.to_string()));
+        println!("S3 URL: {:?}", arweave_url);
     }
 
-    // #[test]
-    // fn test_upload_to_arweave() {
-    //     let url = "https://oaidalleapiprodscus.blob.core.windows.net/private/org-VERV8d0sIdNA5FSba95AQTBS/user-NUbAdDtCASZStcVnHe697b0w/img-xO4fIyAwWh4kYwtZsOozx8o9.png?st=2023-07-18T19%3A56%3A42Z&se=2023-07-18T21%3A56%3A42Z&sp=r&sv=2021-08-06&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2023-07-17T23%3A58%3A30Z&ske=2023-07-18T23%3A58%3A30Z&sks=b&skv=2021-08-06&sig=np5OEfjPFOZKKUwkamSUsGnp%2BcsiQiHh8mRSAGcZj/A%3D";
-    //     let response = aw!(reqwest::get(url)).expect("Failed to send request");
+    #[test]
+    fn test_upload_to_arweave() {
+        dotenv::from_filename("../../.env").ok();
+        let url = "https://oaidalleapiprodscus.blob.core.windows.net/private/org-VERV8d0sIdNA5FSba95AQTBS/user-NUbAdDtCASZStcVnHe697b0w/img-xO4fIyAwWh4kYwtZsOozx8o9.png?st=2023-07-18T19%3A56%3A42Z&se=2023-07-18T21%3A56%3A42Z&sp=r&sv=2021-08-06&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2023-07-17T23%3A58%3A30Z&ske=2023-07-18T23%3A58%3A30Z&sks=b&skv=2021-08-06&sig=np5OEfjPFOZKKUwkamSUsGnp%2BcsiQiHh8mRSAGcZj/A%3D";
+        let response = aw!(reqwest::get(url)).expect("Failed to send request");
 
-    //     // Read the response body as bytes
-    //     let image_bytes = aw!(response
-    //         .bytes()).expect("failed");
+        // Read the response body as bytes
+        let image_bytes = aw!(response
+            .bytes()).expect("failed");
 
-    //     // Encode the image bytes as base64
-    //     let base64_encoded = base64::encode(&image_bytes);
-    //     let arweave_url = aw!(upload_to_arweave(base64_encoded));
-    //     println!("Arweave URL: {:?}", arweave_url);
-    // }
+        // Encode the image bytes as base64
+        let base64_encoded = base64::encode(&image_bytes);
+        let config = aw!(aws_config::load_from_env());
+        let s3_client = s3Client::new(&config);
+        let region = config.region().unwrap().as_ref();
+        let arweave_url = aw!(upload_to_s3(base64_encoded, &s3_client, region.to_string()));
+        println!("S3 URL: {:?}", arweave_url);
+    }
 
 }

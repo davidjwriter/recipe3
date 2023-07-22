@@ -4,12 +4,15 @@ import { App, Stack, RemovalPolicy } from 'aws-cdk-lib';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { RetentionDays } from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, RestApi, Cors } from 'aws-cdk-lib/aws-apigateway';
 import { AttributeType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Duration } from 'aws-cdk-lib';
 import * as dotenv from 'dotenv';
 import path = require('path');
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { LambdaSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
+import { BlockPublicAccess, BucketAccessControl } from 'aws-cdk-lib/aws-s3';
 
 export class Recipe3Stack extends Stack {
   constructor(app: App, id: string) {
@@ -32,12 +35,20 @@ export class Recipe3Stack extends Stack {
        * the new table, and it will remain in your account until manually deleted. By setting the policy to
        * DESTROY, cdk destroy will delete the table (even if it has data in it)
        */
-      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+      removalPolicy: RemovalPolicy.RETAIN, // NOT recommended for production code
     });
 
 
     // Lambda function to add a new recipe
     // Expects a string URL
+    const s3Bucket = new s3.Bucket(this, 'RecipeImages', {
+      versioned: true,
+      removalPolicy: RemovalPolicy.RETAIN,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ACLS,
+      accessControl: BucketAccessControl.BUCKET_OWNER_FULL_CONTROL,
+      publicReadAccess: true,
+    });
+
     const addRecipeWorker = new Function(this, 'addRecipeWorker', {
       description: "Add recipes worker",
       code: Code.fromAsset('lib/lambdas/addRecipeWorker/target/x86_64-unknown-linux-musl/release/lambda'),
@@ -48,10 +59,19 @@ export class Recipe3Stack extends Stack {
         RUST_BACKTRACE: '1',
         TABLE_NAME: 'Recipes',
         OPEN_AI_API_KEY: openAiApiKey,
+        BUCKET_NAME: s3Bucket.bucketName
       },
       logRetention: RetentionDays.ONE_WEEK
     });
 
+    s3Bucket.grantWrite(addRecipeWorker);
+    s3Bucket.addToResourcePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:PutBucketPolicy'],
+        resources: [s3Bucket.bucketArn],
+        principals: [new iam.ServicePrincipal('lambda.amazonaws.com')],
+      })
+    );
     // Create an SNS topic and subscribe the addRecipeWorker Lambda function
     const recipeTopic = new sns.Topic(this, 'AddRecipeTopic');
     recipeTopic.addSubscription(new LambdaSubscription(addRecipeWorker));

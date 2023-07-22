@@ -17,6 +17,9 @@ import Link from '@mui/material/Link';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useEffect, useState } from 'react';
 import { List, ListItem } from '@mui/material';
+import RecipeCard from './components/RecipeCard';
+import NewURLRecipeForm from './components/NewURLRecipeForm';
+import CreatingRecipeModal from './components/CreatingRecipeModal';
 
 function Copyright() {
   return (
@@ -31,13 +34,24 @@ function Copyright() {
   );
 }
 
-const cards = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-
 // TODO remove, this demo shouldn't need to reset the theme.
 const defaultTheme = createTheme();
 
 export default function App() {
   const [recipes, setRecipes] = useState([]);
+  const [url, setUrl] = useState("");
+  const [newRecipeOpen, setNewRecipeOpen] = useState(false);
+  const [creatingRecipeOpen, setCreatingRecipeOpen] = useState(false);
+
+  const handleNewRecipe = () => { setNewRecipeOpen(true); }
+  const handleClose = () => { setNewRecipeOpen(false); }
+
+  const newRecipeSubmit = (url) => {
+    console.log(url);
+    setUrl(url);
+    setNewRecipeOpen(false);
+    setCreatingRecipeOpen(true);
+  }
 
   useEffect(() => {
     const fetchRecipes = async () => {
@@ -79,6 +93,8 @@ export default function App() {
           }}
         >
           <Container maxWidth="sm">
+            <NewURLRecipeForm open={newRecipeOpen} handleClose={handleClose} newRecipeSubmit={newRecipeSubmit}/>
+            <CreatingRecipeModal open={creatingRecipeOpen} url={url}/>
             <Typography
               component="h1"
               variant="h2"
@@ -97,8 +113,8 @@ export default function App() {
               spacing={2}
               justifyContent="center"
             >
-              <Button variant="contained">Create New Recipe!</Button>
-              <Button variant="outlined">Input New Recipe!</Button>
+              <Button onClick={handleNewRecipe} variant="contained">Create New Recipe!</Button>
+              <Button variant="outlined">Buy Me a Coffee</Button>
             </Stack>
           </Container>
         </Box>
@@ -106,32 +122,7 @@ export default function App() {
           {/* End hero unit */}
           <Grid container spacing={4}>
             {recipes.map((recipe, index) => (
-              <Grid item key={index} xs={12} sm={6}>
-                <Card
-                  sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-                >
-                  <CardMedia
-                    component="div"
-                    sx={{
-                      // 16:9
-                      pt: '56.25%',
-                    }}
-                    image="https://source.unsplash.com/random?wallpapers"
-                  />
-                  <CardContent sx={{ flexGrow: 1 }}>
-                    <Typography gutterBottom variant="h5" component="h2">
-                      {recipe["name"]}
-                    </Typography>
-                    <Typography>
-                      {recipe["summary"]}
-                    </Typography>
-                  </CardContent>
-                  <CardActions>
-                    <Button size="small">Mint</Button>
-                    <Button size="small">View</Button>
-                  </CardActions>
-                </Card>
-              </Grid>
+              <RecipeCard recipe={recipe} index={index}/>
             ))}
           </Grid>
         </Container>
@@ -139,7 +130,7 @@ export default function App() {
       {/* Footer */}
       <Box sx={{ bgcolor: 'background.paper', p: 6 }} component="footer">
         <Typography variant="h6" align="center" gutterBottom>
-          Footer
+          Recipe3
         </Typography>
         <Typography
           variant="subtitle1"
@@ -147,7 +138,7 @@ export default function App() {
           color="text.secondary"
           component="p"
         >
-          Something here to give the footer a purpose!
+          Food powered by AI and empowered by web3
         </Typography>
         <Copyright />
       </Box>

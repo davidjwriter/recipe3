@@ -11,7 +11,7 @@ use clap::Parser;
 use futures_util::StreamExt;
 use rayon::iter::ParallelIterator;
 use std::iter::Iterator;
-use lambda_http::{service_fn, Response, Body, Error, Request};
+use lambda_http::{service_fn, Response, Body, Error, Request, RequestExt};
 
 
 #[derive(Debug)]
@@ -29,6 +29,11 @@ pub struct SuccessResponse {
     pub status_code: u8,
     pub headers: HashMap<String, String>,
     pub body: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct URLRequest {
+    pub url: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +130,22 @@ async fn get_table_name() -> Option<String> {
     env::var("TABLE_NAME").ok()
 }
 
+async fn get_recipe_from_db(client: &Client, table_name: &str, url: &str) -> Result<Vec<Recipe>, Error> {
+    let pk = AttributeValue::S(url.to_string());
+    
+    let response = client.get_item()
+        .table_name(table_name)
+        .key("uuid".to_string(), pk)
+        .send().await?;
+    let mut recipes = Vec::new();
+    if let Some(recipe) = response.item {
+        recipes.push(Recipe::from(&recipe));
+        return Ok(recipes);
+    } else {
+        return Ok(recipes);
+    }
+}
+
 async fn get_recipes_from_db(client: &Client, table_name: &str) -> Result<Vec<Recipe>, FailureResponse> {
     let tables = match client.list_tables().send().await {
         Ok(t) => t,
@@ -159,7 +180,7 @@ async fn get_recipes_from_db(client: &Client, table_name: &str) -> Result<Vec<Re
     return Ok(recipes);
 }
 
-async fn handler(_event: Request) -> Result<Response<String>, Error> {
+async fn handler(request: Request) -> Result<Response<String>, Error> {
     // 1. Create db client and get table name from env
     let opt = Opt {
         region: Some("us-east-1".to_string()),
@@ -187,15 +208,19 @@ async fn handler(_event: Request) -> Result<Response<String>, Error> {
     };
     println!("Table Name: {}", table_name);
     // 2. Get recipes from db
-    let recipes = match get_recipes_from_db(&db_client, &table_name).await {
-        Ok(r) => r,
-        Err(e) => {
-            println!("Error retrieving recipes: {}", e.to_string());
-            let resp = Response::builder()
-                .status(500)
-                .body(format!("Error retrieving recipes from db: {}", e.to_string()))?;
-            return Ok(resp);
-        }
+
+    // 2a. Check if url provided then get just that recipe, otherwise return all recipes
+
+    let query_params = request.query_string_parameters();
+    let query_params_map: HashMap<String, String> = query_params
+        .iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+
+    let recipes = if let Some(url_value) = query_params_map.get("url") {
+        get_recipe_from_db(&db_client, &table_name, &url_value).await?
+    } else {
+        get_recipes_from_db(&db_client, &table_name).await?
     };
 
     // 3. Return said recipes in JSON format
