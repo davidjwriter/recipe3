@@ -26,11 +26,10 @@ export default function CreatingRecipeModal(props) {
     <div>
         <Modal
         open={props.open}
-        onClose={props.handleClose}
         aria-labelledby="modal-modal-title"
         aria-describedby="modal-modal-description"
         >
-            <CreatingRecipeStepper url={props.url}/>
+            <CreatingRecipeStepper handleClose={props.handleClose} url={props.url}/>
         </Modal>
     </div>
     );

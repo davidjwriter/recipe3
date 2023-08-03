@@ -23,25 +23,6 @@ const CreatingRecipeStep1 = (props) => {
     /**
      * Create useEffect that publishes recipe
      */
-    useEffect(() => {
-        const submitRecipe = async () => {
-            const apiUrl = "https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api";
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ "url": props.url }),
-              });
-        
-              if (!response.ok) {
-                throw new Error('Request failed.');
-              } else {
-                props.handleNext();
-              }
-        };
-        submitRecipe();
-    }, [props.url]);
 
     return (
         <Box sx={style}>

@@ -23,35 +23,6 @@ const CreatingRecipeStep2 = (props) => {
     /**
      * Waits for recipe to be created 
      */
-    useEffect(() => {
-        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const waitForRecipe = async () => {
-            let retry = true;
-            const apiUrl = `https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api?url=${props.url}`;
-            while (retry) {
-                await delay(10000);
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'GET'
-                    });
-            
-                    if (!response.ok) {
-                        throw new Error('Request failed.');
-                    }
-
-                    const data = await response.json();
-                    console.log(data);
-                    if (Array.isArray(data) && data.length > 0) {
-                        retry = false;
-                        props.handleNext();
-                    }
-                } catch (error) {
-                console.error(error);
-                }
-            }
-        };
-        waitForRecipe();
-    }, [props.url]);
 
     return (
         <Box sx={style}>

@@ -20,6 +20,8 @@ import { List, ListItem } from '@mui/material';
 import RecipeCard from './components/RecipeCard';
 import NewURLRecipeForm from './components/NewURLRecipeForm';
 import CreatingRecipeModal from './components/CreatingRecipeModal';
+import Pagination from '@mui/material/Pagination';
+
 
 function Copyright() {
   return (
@@ -38,13 +40,25 @@ function Copyright() {
 const defaultTheme = createTheme();
 
 export default function App() {
-  const [recipes, setRecipes] = useState([]);
+  const [recipes, setRecipes] = useState(new Map());
   const [url, setUrl] = useState("");
   const [newRecipeOpen, setNewRecipeOpen] = useState(false);
   const [creatingRecipeOpen, setCreatingRecipeOpen] = useState(false);
 
   const handleNewRecipe = () => { setNewRecipeOpen(true); }
   const handleClose = () => { setNewRecipeOpen(false); }
+  const handleCreationDone = () => { setCreatingRecipeOpen(false); }
+
+  const RECIPE_PER_PAGE = 6;
+  const [page, setPage] = useState(1);
+
+  const handlePageChange = (e, p) => {
+    setPage(p);
+  }
+
+  const handleBuyMeACoffee = () => {
+    window.open('https://commerce.coinbase.com/checkout/5208dfe6-1668-4636-9adc-3c435bdb674b', '_blank');
+  }
 
   const newRecipeSubmit = (url) => {
     console.log(url);
@@ -63,14 +77,37 @@ export default function App() {
           },
         });
         const jsonData = await response.json();
-        console.log(jsonData);
-        setRecipes(jsonData);
+        console.log(paginateList(jsonData));
+        setRecipes(paginateList(jsonData));
       } catch (error) {
         console.log('Error fetching recipes:', error);
       }
     };
     fetchRecipes();
   }, []);
+
+  const paginateList = (list) => {
+    list.sort(function(a, b) {
+        return a.name.localeCompare(b.name);
+    });
+    console.log(list);
+    let data = new Map();
+    let i = 0;
+    let pageNum = 1;
+    list.map((recipe) => {
+        i += 1;
+        if (data.get(pageNum) === undefined) {
+            data.set(pageNum, [recipe]);
+        } else {
+            data.set(pageNum, [...data.get(pageNum), recipe]);
+        }
+        if (i === RECIPE_PER_PAGE) {
+            pageNum += 1;
+            i = 0;
+        }
+    });
+    return data;
+  }
 
   return (
     <ThemeProvider theme={defaultTheme}>
@@ -94,7 +131,7 @@ export default function App() {
         >
           <Container maxWidth="sm">
             <NewURLRecipeForm open={newRecipeOpen} handleClose={handleClose} newRecipeSubmit={newRecipeSubmit}/>
-            <CreatingRecipeModal open={creatingRecipeOpen} url={url}/>
+            <CreatingRecipeModal open={creatingRecipeOpen} url={url} handleClose={handleCreationDone}/>
             <Typography
               component="h1"
               variant="h2"
@@ -114,18 +151,21 @@ export default function App() {
               justifyContent="center"
             >
               <Button onClick={handleNewRecipe} variant="contained">Create New Recipe!</Button>
-              <Button variant="outlined">Buy Me a Coffee</Button>
+              <Button onClick={handleBuyMeACoffee} variant="outlined">Buy Me a Coffee</Button>
             </Stack>
           </Container>
         </Box>
         <Container sx={{ py: 8 }} maxWidth="md">
           {/* End hero unit */}
           <Grid container spacing={4}>
-            {recipes.map((recipe, index) => (
+            {Object.values(recipes.get(page)).map((recipe, index) => (
               <RecipeCard recipe={recipe} index={index}/>
             ))}
           </Grid>
         </Container>
+        <Stack sx={{marginTop: '20px', alignItems: 'center', justifyItems: 'center'}} spacing={2}>
+                <Pagination page={page} onChange={handlePageChange} count={recipes.size} color="primary" />
+        </Stack>
       </main>
       {/* Footer */}
       <Box sx={{ bgcolor: 'background.paper', p: 6 }} component="footer">

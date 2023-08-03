@@ -6,13 +6,22 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
+import { useEffect, useState } from 'react';
 
 export default function NewURLRecipeForm(props) {
-  const [url, setUrl] = React.useState(''); // State to store the URL input value
-
+  const [url, setUrl] = useState(''); // State to store the URL input value
+  const [validUrl, setIsValidUrl] = useState(false);
   const handleUrlChange = (event) => {
     setUrl(event.target.value); // Update the state with the input value
   };
+
+  useEffect(() => {
+    // Regular expression for URL validation
+    const urlPattern = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/i;
+    setIsValidUrl(urlPattern.test(url));
+  }, [url]);
+
+
   const handleSubmit = () => {
     props.newRecipeSubmit(url);
   }
@@ -37,7 +46,7 @@ export default function NewURLRecipeForm(props) {
         </DialogContent>
         <DialogActions>
           <Button onClick={props.handleClose}>Cancel</Button>
-          <Button onClick={handleSubmit}>Subscribe</Button>
+          <Button disables={!validUrl} onClick={handleSubmit}>Submit</Button>
         </DialogActions>
       </Dialog>
     </div>

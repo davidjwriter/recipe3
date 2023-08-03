@@ -6,6 +6,8 @@ import Modal from '@mui/material/Modal';
 import { useEffect, useState } from 'react';
 import CircularProgress from '@mui/material/CircularProgress';
 import Recipe from './Recipe';
+import RecipeCard from './RecipeCard';
+import CheckIcon from '@mui/icons-material/Check';
 
 const style = {
     position: 'absolute',
@@ -20,42 +22,20 @@ const style = {
   };
 
 const CreatingRecipeStep3 = (props) => {
-    const [recipe, setRecipe] = useState(null);
     /**
      * Show Recipe Card, not spongebob thing
      */
-    useEffect(() => {
-        const waitForRecipe = async () => {
-            const apiUrl = `https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api?url=${props.url}`;
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'GET'
-                });
-        
-                if (!response.ok) {
-                    throw new Error('Request failed.');
-                }
-
-                const data = await response.json();
-                console.log(data);
-                setRecipe(data[0]);
-            } catch (error) {
-            console.error(error);
-            }
-            props.handleNext();
-        };
-        waitForRecipe();
-    }, [props.url]);
 
 
     return (
         <Box sx={style}>
-            <CircularProgress color="success" />
+            <CheckIcon color="success" />
 
             <Typography id="modal-modal-title" variant="h6" component="h2">
                 Done!
             </Typography>
-            {recipe !== null && <Recipe recipe={recipe}/>}
+            {props.recipe !== null && <RecipeCard recipe={props.recipe}/>}
+            <Button onClick={props.handleClose}>Close</Button>
         </Box>
     );
 };
