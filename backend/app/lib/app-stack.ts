@@ -11,14 +11,18 @@ import { Duration } from 'aws-cdk-lib';
 import * as dotenv from 'dotenv';
 import path = require('path');
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { LambdaSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
 import { BlockPublicAccess, BucketAccessControl } from 'aws-cdk-lib/aws-s3';
+import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 
 export class Recipe3Stack extends Stack {
   constructor(app: App, id: string) {
     super(app, id);
     dotenv.config({ path: path.resolve(__dirname, '.env') });
     const openAiApiKey = process.env.OPEN_AI_API_KEY || 'NO_API_KEY';
+    const privateKey = process.env.PRIVATE_KEY || 'NO_PRIVATE_KEY';
+    const nftStoreApiKey = process.env.NFT_STORAGE_API_KEY || 'No NFT Store API Key';
 
     // Setup our dynamo db table
     const dynamoTable = new Table(this, 'Recipes', {
@@ -105,6 +109,19 @@ export class Recipe3Stack extends Stack {
       logRetention: RetentionDays.ONE_WEEK
     });
 
+    // Lambda for minting a recipe
+    const mintNFT = new Function(this, 'mintRecipe', {
+      code: lambda.Code.fromAsset(path.join(__dirname, '/lambdas/mintRecipe')),
+      runtime: Runtime.NODEJS_16_X,
+      handler: 'handler.handler',
+      timeout: Duration.minutes(5),
+      environment: {
+        NFT_STORAGE_API_KEY: nftStoreApiKey,
+        PRIVATE_KEY: privateKey,
+      }
+    });
+
+
     // Grant the lambda functions write and read access
     dynamoTable.grantFullAccess(getRecipes);
     dynamoTable.grantFullAccess(addRecipe);
@@ -120,9 +137,22 @@ export class Recipe3Stack extends Stack {
       }
     });
 
+    const nftAPI = new RestApi(this, 'MintRecipe3API', {
+      restApiName: "Mint Recipe3 API",
+      defaultCorsPreflightOptions: {
+        allowOrigins: Cors.ALL_ORIGINS,
+        allowMethods: Cors.ALL_METHODS,
+        allowHeaders: Cors.DEFAULT_HEADERS
+      }
+    });
+
     // Integrate lambda functions with an API gateway
+    const mintNFTAPI = new LambdaIntegration(mintNFT);
     const getRecipesAPI = new LambdaIntegration(getRecipes);
     const addRecipeAPI = new LambdaIntegration(addRecipe);
+
+    const nfts = nftAPI.root.addResource('api');
+    nfts.addMethod('POST', mintNFTAPI);
 
     const books = api.root.addResource('api');
     books.addMethod('POST', addRecipeAPI);
