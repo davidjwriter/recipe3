@@ -31,7 +31,7 @@ export default function NewURLRecipeForm(props) {
         <DialogTitle>New Recipe</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Enter your recipe url and we'll import, format, and create the recipe for you to mint to your wallet!
+            Enter your recipe url and we'll import, format, and create the recipe for you to collect!
           </DialogContentText>
           <TextField
             autoFocus

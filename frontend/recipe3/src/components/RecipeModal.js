@@ -46,7 +46,7 @@ export default function RecipeModal(props) {
               {props.recipe["name"]}
             </Typography>
             <Button autoFocus color="inherit" onClick={props.handleClose}>
-              Mint
+              Collect
             </Button>
           </Toolbar>
         </AppBar>

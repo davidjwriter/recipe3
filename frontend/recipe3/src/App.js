@@ -21,6 +21,14 @@ import RecipeCard from './components/RecipeCard';
 import NewURLRecipeForm from './components/NewURLRecipeForm';
 import CreatingRecipeModal from './components/CreatingRecipeModal';
 import Pagination from '@mui/material/Pagination';
+import { Web3Auth } from "@web3auth/web3auth";
+import Web3 from "web3";
+import { CHAIN_NAMESPACES } from "@web3auth/base";
+import RPC from "./web3RPC";
+import { useSelector, useDispatch } from 'react-redux';
+import { userActions } from './store/user-slice';
+
+
 
 
 function Copyright() {
@@ -52,6 +60,59 @@ export default function App() {
   const RECIPE_PER_PAGE = 6;
   const [page, setPage] = useState(1);
 
+  const clientId = "BI7xpIodiQQObdUMmpKq6nHgQPGfGVHWVNQ3upknWeB1mLED11GRJ7sC5Jju-9T4Hri7hNt6_nZ4he_ExmanbWU";
+  const [web3auth, setWeb3auth] = useState(null);
+
+  const dispatch = useDispatch();
+  const user = useSelector(state => state.user);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const web3auth = new Web3Auth({
+          clientId,
+          chainConfig: {
+            chainNamespace: CHAIN_NAMESPACES.EIP155,
+            chainId: "0x13881",
+            rpcTarget: "https://rpc-mumbai.maticvigil.com/",
+          },
+        });
+
+        setWeb3auth(web3auth);
+        await web3auth.initModal();
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    init();
+  }, []);
+
+  const login = async () => {
+    if (!web3auth) {
+      console.log("web3auth not initialized yet");
+      return;
+    }
+    const web3authProvider = await web3auth.connect();
+    const rpc = new RPC(web3authProvider);
+    const address = await rpc.getAccounts();
+    console.log(address);
+    dispatch(userActions.logIn({"publicKey": address}));
+  };
+
+  const logout = async () => {
+    if (!web3auth) {
+      console.log("web3auth not initialized yet");
+      return;
+    }
+    dispatch(userActions.logOut());
+    web3auth.logout();
+  };
+
+  useEffect(() => {
+    console.log(user);
+  }, [user]);
+
   const handlePageChange = (e, p) => {
     setPage(p);
   }
@@ -65,6 +126,10 @@ export default function App() {
     setUrl(url);
     setNewRecipeOpen(false);
     setCreatingRecipeOpen(true);
+  }
+
+  const formatAddress = (address) => {
+    return address.slice(0, 6) + "..." + address.slice(-4);
   }
 
   useEffect(() => {
@@ -113,12 +178,16 @@ export default function App() {
     <ThemeProvider theme={defaultTheme}>
       <CssBaseline />
       <AppBar position="relative">
-        <Toolbar>
-          <MenuBookIcon sx={{ mr: 2 }} />
+      <Toolbar>
+        <MenuBookIcon sx={{ mr: 2 }} />
           <Typography variant="h6" color="inherit" noWrap>
             Recipes
           </Typography>
-        </Toolbar>
+          <Box sx={{ flexGrow: 1 }} /> {/* This will take up the available space */}
+          {!user.loggedIn && <Button onClick={login} color="secondary" variant="contained">Login</Button>}
+          {user.loggedIn && <Typography variant="p">{formatAddress(user.publicKey)}</Typography>}
+          {user.loggedIn && <Button sx={{ml: '10px'}} onClick={logout} color="secondary" variant = "contained">Logout</Button>}
+      </Toolbar>
       </AppBar>
       <main>
         {/* Hero unit */}
@@ -142,7 +211,7 @@ export default function App() {
               Recipe3
             </Typography>
             <Typography variant="h5" align="center" color="text.secondary" paragraph>
-              Generate a recipe NFT from your favorite recipe URL or input the old family recipe. Search through all recipes created by other users and mint your favorite today!
+              Generate a recipe NFT from your favorite recipe URL or input the old family recipe. Search through all recipes created by other users and collect your favorite today!
             </Typography>
             <Stack
               sx={{ pt: 4 }}
@@ -158,9 +227,11 @@ export default function App() {
         <Container sx={{ py: 8 }} maxWidth="md">
           {/* End hero unit */}
           <Grid container spacing={4}>
-            {Object.values(recipes.get(page)).map((recipe, index) => (
-              <RecipeCard recipe={recipe} index={index}/>
-            ))}
+            {recipes.size > 0 &&
+              Object.values(recipes.get(page)).map((recipe, index) => (
+                <RecipeCard recipe={recipe} index={index}/>
+              ))
+            }
           </Grid>
         </Container>
         <Stack sx={{marginTop: '20px', alignItems: 'center', justifyItems: 'center'}} spacing={2}>

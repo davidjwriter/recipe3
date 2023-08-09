@@ -18,9 +18,24 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useEffect, useState } from 'react';
 import { List, ListItem } from '@mui/material';
 import RecipeModal from './RecipeModal';
+import MintModal from './MintModal';
+import { useSelector } from 'react-redux';
+import Snackbar from '@mui/material/Snackbar';
+import MuiAlert from '@mui/material/Alert';
+
+const Alert = React.forwardRef(function Alert(props, ref) {
+  return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
+});
 
 const RecipeCard = (props) => {
     const [open, setOpen] = useState(false);
+    const [openMint, setOpenMint] = useState(false);
+    const user = useSelector(state => state.user);
+    const [openLogonWarning, setOpenLogonWarning] = useState(false);
+    
+    const closeLogonWarning = () => {
+      setOpenLogonWarning(false);
+    }
 
     const handleView = () => {
         setOpen(true);
@@ -28,11 +43,30 @@ const RecipeCard = (props) => {
 
     const handleClose = () => {
         setOpen(false);
+        handleMint();
+    }
+
+    const handleMint = () => {
+      if (user.loggedIn) {
+        setOpenMint(true);
+      } else {
+        setOpenLogonWarning(true);
+      }
+    }
+
+    const handleMintClose = () => {
+      setOpenMint(false);
     }
     
     return (
         <Grid item key={props.index} xs={12} sm={6}>
         <RecipeModal open={open} handleClose={handleClose} recipe={props.recipe}/>
+        <MintModal open={openMint} handleClose={handleMintClose} recipe={props.recipe}/>
+        <Snackbar open={openLogonWarning} autoHideDuration={6000} onClose={closeLogonWarning}>
+          <Alert onClose={closeLogonWarning} severity="warning" sx={{ width: '100%' }}>
+            Please login to collect a recipe!
+          </Alert>
+        </Snackbar>
         <Card
           sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
         >
@@ -53,7 +87,7 @@ const RecipeCard = (props) => {
             </Typography>
           </CardContent>
           <CardActions>
-            {!props.noButton && <Button size="small">Mint</Button>}
+            {!props.noButton && <Button onClick={handleMint} size="small">Collect</Button>}
             {!props.noButton && <Button onClick={handleView} size="small">View</Button>}
           </CardActions>
         </Card>
