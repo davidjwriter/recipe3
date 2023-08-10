@@ -43,7 +43,6 @@ const RecipeCard = (props) => {
 
     const handleClose = () => {
         setOpen(false);
-        handleMint();
     }
 
     const handleMint = () => {
@@ -60,7 +59,7 @@ const RecipeCard = (props) => {
     
     return (
         <Grid item key={props.index} xs={12} sm={6}>
-        <RecipeModal open={open} handleClose={handleClose} recipe={props.recipe}/>
+        <RecipeModal open={open} handleClose={handleClose} handleMint={handleMint} recipe={props.recipe} showCollect={props.showCollect}/>
         <MintModal open={openMint} handleClose={handleMintClose} recipe={props.recipe}/>
         <Snackbar open={openLogonWarning} autoHideDuration={6000} onClose={closeLogonWarning}>
           <Alert onClose={closeLogonWarning} severity="warning" sx={{ width: '100%' }}>
@@ -87,7 +86,7 @@ const RecipeCard = (props) => {
             </Typography>
           </CardContent>
           <CardActions>
-            {!props.noButton && <Button onClick={handleMint} size="small">Collect</Button>}
+            {!props.noButton && props.showCollect && <Button onClick={handleMint} size="small">Collect</Button>}
             {!props.noButton && <Button onClick={handleView} size="small">View</Button>}
           </CardActions>
         </Card>

@@ -45,9 +45,11 @@ export default function RecipeModal(props) {
             <Typography sx={{ ml: 2, flex: 1 }} variant="h6" component="div">
               {props.recipe["name"]}
             </Typography>
-            <Button autoFocus color="inherit" onClick={props.handleClose}>
+            {props.showCollect && 
+            <Button autoFocus color="inherit" onClick={props.handleMint}>
               Collect
             </Button>
+            }
           </Toolbar>
         </AppBar>
         <Grid container sx={{p: 10}}>

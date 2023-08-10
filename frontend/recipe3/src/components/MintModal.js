@@ -10,18 +10,18 @@ import { CircularProgress } from '@mui/material';
 import { useEffect, useState } from 'react';
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
+import { useSelector } from 'react-redux';
+
 
 const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
 });
 
 export default function MintModal(props) {
-  const [address, setAddress] = useState(''); // State to store the URL input value
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const handleUrlChange = (event) => {
-    setAddress(event.target.value); // Update the state with the input value
-  };
+  const user = useSelector(state => state.user);
+
 
   const handleClose = () => {
     setSuccess(false);
@@ -60,7 +60,7 @@ ${props.recipe['notes']}
         'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-            "receiver": address,
+            "receiver": user.publicKey,
             "name": props.recipe["name"],
             "description": description,
             "image": props.recipe["image"]
