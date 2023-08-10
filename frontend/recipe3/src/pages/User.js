@@ -60,7 +60,8 @@ const User = (props) => {
         summary: "",
         ingredients: [],
         instructions: [],
-        notes: ""
+        notes: "",
+        uuid: ""
     };
     let currentSection = "";
 
@@ -77,6 +78,8 @@ const User = (props) => {
                 }
             } else if (currentSection === "notes") {
                 json.notes += line.trim();
+            } else if (currentSection === "credit") {
+                json.uuid += line.trim();
             }
         }
     }

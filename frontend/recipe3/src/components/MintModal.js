@@ -45,6 +45,9 @@ ${props.recipe["instructions"].map((instruction, index) => `${index + 1}. ${inst
 
 ## Notes
 ${props.recipe['notes']}
+
+## Credit
+${props.recipe['uuid']}
     `;
     return markdown;
   }
