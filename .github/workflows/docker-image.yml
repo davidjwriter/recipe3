@@ -1,5 +1,10 @@
 name: Build Tesseract
-
+on:
+  workflow_dispatch:
+    inputs:
+      manual_trigger:
+        description: 'Manually trigger the workflow'
+        required: true
 jobs:
 
   build:
