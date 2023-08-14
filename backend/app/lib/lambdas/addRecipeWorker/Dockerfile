@@ -1,15 +1,15 @@
 ## Builds binaries for Amazonlinux 2
 FROM public.ecr.aws/sam/build-provided.al2:1.73
 
-ARG LEPTONICA_VERSION=1.79.0
-ARG TESSERACT_VERSION=4.1.1
+ARG LEPTONICA_VERSION=1.83.1
+ARG TESSERACT_VERSION=5.3.2
 ARG AUTOCONF_ARCHIVE_VERSION=2017.09.28
 ARG TMP_BUILD=/tmp
 ARG TESSERACT=/opt/tesseract
 ARG LEPTONICA=/opt/leptonica
 ARG DIST=/opt/build-dist
 # change OCR_LANG to enable the layer for different languages
-ARG OCR_LANG=eng
+ARG OCR_LANG=deu
 # change TESSERACT_DATA_SUFFIX to use different datafiles (options: "_best", "_fast" and "")
 ARG TESSERACT_DATA_SUFFIX=_fast
 ARG TESSERACT_DATA_VERSION=4.1.0
