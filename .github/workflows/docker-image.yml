@@ -14,10 +14,6 @@ jobs:
       -
         name: Checkout
         uses: actions/checkout@v3
-        # Add this step to print the contents of the specified directory
-      - name: Debug - List Directory Contents
-        run: |
-          ls -la backend/lib/lambdas/addRecipeWorker
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -34,6 +30,6 @@ jobs:
         name: Build and push
         uses: docker/build-push-action@v4
         with:
-          context: ./backend/lib/lambdas/addRecipeWorker/
+          context: backend/app/lib/lambdas/addRecipe/
           push: true
           tags: scotchcurry/tesseract:latest
