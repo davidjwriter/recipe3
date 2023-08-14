@@ -30,6 +30,6 @@ jobs:
         name: Build and push
         uses: docker/build-push-action@v4
         with:
-          context: backend/app/lib/lambdas/addRecipe/
+          context: backend/app/lib/lambdas/addRecipeWorker/
           push: true
           tags: scotchcurry/tesseract:latest
