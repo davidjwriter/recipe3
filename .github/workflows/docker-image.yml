@@ -28,8 +28,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
         name: Build and push
-        uses: docker/build-push-action@v4
-        with:
-          context: backend/lib/lambdas/addRecipeWorker
-          push: true
-          tags: scotchcurry/tesseract:latest
+        run: docker build --build-arg TESSERACT_VERSION=4.0.0 -t scotchcurry/tesseract -f backend/app/lib/lambdas/addRecipeWorker/Dockerfile .
+      - 
+        name: Push image to Docker Hub
+        run: docker push scotchcurry/tesseract
