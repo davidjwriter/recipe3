@@ -7,7 +7,7 @@ use reqwest::get;
 use select::document::Document;
 use select::predicate::Name;
 use aws_sdk_dynamodb::types::AttributeValue;
-use aws_sdk_dynamodb::{Client};
+use aws_sdk_dynamodb::Client as DbClient;
 use aws_lambda_events::event::sns;
 use aws_config;
 use uuid::Uuid;
@@ -20,6 +20,8 @@ use scraper::{Html, Selector};
 use lambda_http::{Response, Body, Error, Request};
 use lambda_runtime::{service_fn, LambdaEvent};
 use tokio::fs::File;
+use tokio::time::Duration;
+use tokio::fs::File as AsyncFile;
 use reqwest::{multipart};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use std::path::Path;
@@ -32,6 +34,8 @@ use aws_sdk_s3::Client as s3Client;
 use aws_sdk_s3::operation::put_object::{PutObjectError, PutObjectOutput};
 use aws_sdk_s3::{error::SdkError, primitives::ByteStream};
 use aws_sdk_s3::types::ObjectCannedAcl;
+use rusty_tesseract::{Args, Image};
+use aws_types;
 
 
 const PROMPT: &str = "Using this web page content, parse the recipe out, summarize it, and put it in JSON format using this format: {name: <str>, ingredients: [], instructions: [], notes: <str>, summary: <str>}";
@@ -55,9 +59,18 @@ pub struct Recipe {
     pub summary: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum ContentType {
+    URL,
+    IMAGE,
+    BULK
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct URLRequest {
     pub url: String,
+    pub content_type: ContentType,
+    pub credit: Option<String>
 }
 
 // Implement Display for the Failure response so that we can then implement Error.
@@ -77,6 +90,76 @@ async fn main() -> Result<(), Error> {
     lambda_runtime::run(func).await?;
 
     Ok(())
+}
+
+fn get_image_extension(url: &str) -> Option<&str> {
+    let path = url.split('/').last()?; // Get the last part of the URL, which should be the filename
+    let parts: Vec<&str> = path.split('.').collect(); // Split the filename by dot
+    parts.last().copied() // Return the last part (extension) if available
+}
+
+async fn wait_for_file(file_path: &str, max_retries: usize) -> bool {
+    let mut retries = 0;
+    while retries < max_retries {
+        if std::path::Path::new(file_path).exists() {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        retries += 1;
+    }
+    false
+}
+
+async fn get_image_contents(url: &str) -> Result<SuccessResponse, FailureResponse> {
+    // First get the image
+    let response = match get(url).await {
+        Ok(r) => r,
+        Err(e) => {
+            println!("Error reading image URL: {:?} {:?}", url, e);
+            return Err(FailureResponse {
+                body: format!("Error reading image URL: {}", e)
+            });
+        }
+    };
+    // Write the image to a file
+    let ext = get_image_extension(url).unwrap();
+    let file_name = format!("/tmp/image.{}", ext);
+    let mut dest = AsyncFile::create(&file_name).await.unwrap();
+    let bytes = response.bytes().await.unwrap();
+    dest.write_all(&bytes).await.unwrap();
+
+    // Wait for the file to be available
+    let max_retries = 10; // Adjust as needed
+    if !wait_for_file(&file_name, max_retries).await {
+        return Err(FailureResponse {
+            body: "Failed to write image file".to_string(),
+        });
+    }
+
+    // Setup arguments for tesseract
+    let default_args = Args::default();
+
+    // Create an image struct
+    let image = Image::from_path(&file_name).unwrap();
+    println!("Image: {:?}", image);
+
+    //tesseract version
+    let tesseract_version = rusty_tesseract::get_tesseract_version().unwrap();
+    println!("The tesseract version is: {:?}", tesseract_version);
+
+    //available languages
+    let tesseract_langs = rusty_tesseract::get_tesseract_langs().unwrap();
+    println!("The available languages are: {:?}", tesseract_langs);
+
+    //available config parameters
+    let parameters = rusty_tesseract::get_tesseract_config_parameters().unwrap();
+    println!("Example config parameter: {}", parameters.config_parameters.first().unwrap());
+    // Analyze image and extract text
+    let output = rusty_tesseract::image_to_string(&image, &default_args).unwrap();
+    println!("{:?}", output);
+    Ok(SuccessResponse {
+        body: output,
+    })
 }
 
 async fn get_web_contents(url: &str) -> Result<SuccessResponse, FailureResponse> {
@@ -144,6 +227,10 @@ async fn get_web_contents(url: &str) -> Result<SuccessResponse, FailureResponse>
     return Ok(SuccessResponse {
         body: words.join("")
     });
+}
+
+async fn get_tessdata() -> Option<String> {
+    env::var("TESSDATA_PREFIX").ok()
 }
 
 async fn get_api_key() -> Option<String> {
@@ -278,12 +365,22 @@ async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
             model: chat_completion::GPT4.to_string(),
             messages: vec![chat_completion::ChatCompletionMessage {
                 role: chat_completion::MessageRole::user,
-                content: Some(format!("{} {}", PROMPT.to_string(), contents)),
+                content: format!("{} {}", PROMPT.to_string(), contents),
                 name: None,
                 function_call: None,
             }],
             functions: None,
-            function_call: None
+            function_call: None,
+            temperature: None,
+            top_p: None,
+            n: None,
+            stream: None,
+            stop: None,
+            max_tokens: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logit_bias: None,
+            user: None,
         };
         println!("Chat Request: {:?}", req);
         let result = match client.chat_completion(req).await {
@@ -357,8 +454,12 @@ async fn generate_uuid() -> String {
  * instructions: []
  * notes: string
  */
-pub async fn add_to_db(client: &Client, recipe: Recipe, url: &str, image_url: &str, table: &String) -> Result<String, Error> {
-    let uuid = AttributeValue::S(url.to_string());
+pub async fn add_to_db(client: &DbClient, recipe: Recipe, url: &str, image_url: &str, table: &String, credit: Option<String>) -> Result<String, Error> {
+    let uuid = if let Some(c) = credit {
+        AttributeValue::S(c)
+    } else {
+        AttributeValue::S(url.to_string())
+    };
     let name = AttributeValue::S(recipe.name);
     let ingredients = AttributeValue::S(join_strings(recipe.ingredients).await);
     let instructions = AttributeValue::S(join_strings(recipe.instructions).await);
@@ -384,9 +485,16 @@ pub async fn add_to_db(client: &Client, recipe: Recipe, url: &str, image_url: &s
     Ok(String::from("Recipe Added!"))
 }
 
-async fn worker(body: &str) -> Result<String, Error> {
-    let config = aws_config::load_from_env().await;
+/**
+ * We need a new function that can take in different types of raw contents
+ * URL of recipe
+ * URL of image of a recipe
+ * Text of bulk recipe entry
+ * Then we move to the worker where it takes in the contents and goes from there
+ */
 
+async fn worker(body: &str) -> Result<String, Error> {
+    let config: aws_types::sdk_config::SdkConfig = aws_config::load_from_env().await;
     let url: URLRequest = match serde_json::from_str(&body) {
         Ok(u) => u,
         Err(e) => {
@@ -397,11 +505,15 @@ async fn worker(body: &str) -> Result<String, Error> {
     let url_value = url.url;
     println!("URL: {}", url_value);
 
-    // 2. Get web contents
-    let contents = get_web_contents(&url_value).await?;
+    // 1. Determine content type:
+    let contents = match url.content_type {
+        ContentType::URL => get_web_contents(&url_value).await?.body,
+        ContentType::IMAGE => get_image_contents(&url_value).await?.body,
+        ContentType::BULK => url_value.clone(),
+    };
 
     // 3. Parse recipe from web contents
-    let recipe = match parse_recipe(contents.body).await {
+    let recipe = match parse_recipe(contents).await {
         Ok(r) => r,
         Err(e) => {
             return Ok(format!("Error parsing recipe: {:?}", e));
@@ -426,14 +538,14 @@ async fn worker(body: &str) -> Result<String, Error> {
     };
 
     // 5. Add recipe to db
-    let db_client = Client::new(&config);
+    let db_client = DbClient::new(&config);
     let table_name = match get_table_name().await {
         Some(t) => t,
         None => {
             return Ok(String::from("Table Name Not Set"));
         }
     };
-    match add_to_db(&db_client, recipe, &url_value, &image_url, &table_name).await {
+    match add_to_db(&db_client, recipe, &url_value, &image_url, &table_name, url.credit).await {
         Ok(_) => {
             return Ok(String::from("Success!"));
         },
@@ -507,6 +619,30 @@ mod tests {
         let region = config.region().unwrap().as_ref();
         let arweave_url = aw!(upload_to_s3(response.unwrap(), &s3_client, region.to_string()));
         println!("S3 URL: {:?}", arweave_url);
+    }
+
+    #[test]
+    fn test_image_reader_png() {
+        dotenv::from_filename("../../.env").ok();
+        let url = "https://recipe3stack-recipeimagesdc582a3a-1q2uf0c8a37h6.s3.amazonaws.com/IMG_1476.png";
+        let contents = aw!(get_image_contents(&url));
+        println!("{:?}", contents.unwrap().body);
+    }
+
+    #[test]
+    fn test_image_reader_heic() {
+        dotenv::from_filename("../../.env").ok();
+        let url = "https://recipe3stack-recipeimagesdc582a3a-1q2uf0c8a37h6.s3.amazonaws.com/IMG_1476.heic";
+        let contents = aw!(get_image_contents(&url));
+        println!("{:?}", contents.unwrap().body);
+    }
+
+    #[test]
+    fn test_image_reader_jpg() {
+        dotenv::from_filename("../../.env").ok();
+        let url = "https://recipe3stack-recipeimagesdc582a3a-1q2uf0c8a37h6.s3.amazonaws.com/IMG_2314.jpg";
+        let contents = aw!(get_image_contents(&url));
+        println!("{:?}", contents.unwrap().body);
     }
 
     #[test]
