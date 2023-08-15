@@ -73,6 +73,11 @@ pub struct URLRequest {
     pub credit: Option<String>
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TesseractRequest {
+    pub url: String
+}
+
 // Implement Display for the Failure response so that we can then implement Error.
 impl std::fmt::Display for FailureResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -111,51 +116,19 @@ async fn wait_for_file(file_path: &str, max_retries: usize) -> bool {
 }
 
 async fn get_image_contents(url: &str) -> Result<SuccessResponse, FailureResponse> {
-    // First get the image
-    let response = match get(url).await {
-        Ok(r) => r,
-        Err(e) => {
-            println!("Error reading image URL: {:?} {:?}", url, e);
-            return Err(FailureResponse {
-                body: format!("Error reading image URL: {}", e)
-            });
-        }
+    let uri = "https://fjd4m5rkc1.execute-api.us-east-1.amazonaws.com/prod/api";
+    let request = TesseractRequest {
+        url: String::from_str(url),
     };
-    // Write the image to a file
-    let ext = get_image_extension(url).unwrap();
-    let file_name = format!("/tmp/image.{}", ext);
-    let mut dest = AsyncFile::create(&file_name).await.unwrap();
-    let bytes = response.bytes().await.unwrap();
-    dest.write_all(&bytes).await.unwrap();
-
-    // Wait for the file to be available
-    let max_retries = 10; // Adjust as needed
-    if !wait_for_file(&file_name, max_retries).await {
-        return Err(FailureResponse {
-            body: "Failed to write image file".to_string(),
-        });
-    }
-
-    // Setup arguments for tesseract
-    let default_args = Args::default();
-
-    // Create an image struct
-    let image = Image::from_path(&file_name).unwrap();
-    println!("Image: {:?}", image);
-
-    //tesseract version
-    let tesseract_version = rusty_tesseract::get_tesseract_version().unwrap();
-    println!("The tesseract version is: {:?}", tesseract_version);
-
-    //available languages
-    let tesseract_langs = rusty_tesseract::get_tesseract_langs().unwrap();
-    println!("The available languages are: {:?}", tesseract_langs);
-
-    //available config parameters
-    let parameters = rusty_tesseract::get_tesseract_config_parameters().unwrap();
-    println!("Example config parameter: {}", parameters.config_parameters.first().unwrap());
-    // Analyze image and extract text
-    let output = rusty_tesseract::image_to_string(&image, &default_args).unwrap();
+    let client = reqwest::Client::new();
+    let response = client
+        .post(uri)
+        .json(&request)
+        .send()
+        .await.unwrap();
+    
+    // Parse the response
+    let output: serde_json::Value = response.json().await.unwrap();
     println!("{:?}", output);
     Ok(SuccessResponse {
         body: output,

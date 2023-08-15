@@ -33,9 +33,16 @@ async function fetchImageFromS3(url) {
   try {
     // Fetch the image from the S3 bucket as a stream
     const response = await axios.get(url, { responseType: 'stream' });
-
+    // Create a promise to capture the image data from the stream
+    const imageData = await new Promise((resolve, reject) => {
+      const chunks = [];
+      response.data.on('data', (chunk) => chunks.push(chunk));
+      response.data.on('end', () => resolve(Buffer.concat(chunks)));
+      response.data.on('error', (error) => reject(error));
+    });
     // Return the stream of the image
-    return response.data;
+    console.log(imageData);
+    return imageData;
   } catch (error) {
     console.error('Error fetching image from S3:', error);
     throw error;
@@ -59,9 +66,10 @@ async function storeAsset(imageURL, name, description) {
           [img],
           'pic.jpg',
           { type: 'image/jpg' }
-      ),
+      )
   })
   console.log("Metadata stored on Filecoin and IPFS with URL:", metadata.url);
+  console.log(metadata);
   return metadata.url;
 }
 
@@ -93,7 +101,8 @@ async function mintNFT(address, URI) {
         let signedTxn = (await wallet).sendTransaction(rawTxn)
         let reciept = (await signedTxn).wait()
         if (reciept) {
-            return "Success"
+            console.log("Minted NFT Successfully!");
+            return "Success";
         } else {
             console.log("Error submitting transaction")
             throw Exception("Error submitting txn")
@@ -106,7 +115,7 @@ async function mintNFT(address, URI) {
 
 const handler = async (event) => {
   if (!event.body) {
-    return { statusCode: 400, body: 'invalid request, you are missing the parameter body' };
+    return { statusCode: 400, header: "Access-Control-Allow-Origin: *", body: 'invalid request, you are missing the parameter body' };
   }
   const body = typeof event.body == 'object' ? event.body : JSON.parse(event.body);
   const receiver = body.receiver;
@@ -120,9 +129,21 @@ const handler = async (event) => {
   // 2. Take the metadata and mint a new NFT for the receiver
   try {
     await mintNFT(receiver, metaData);
-    return {statusCode: 200, body: "Success!"};
+    return {
+      statusCode: 200, 
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      },
+      body: "Success!"
+    };
   } catch (err) {
-    return {statusCode: 500, body: JSON.stringify(err)};
+    return {
+      statusCode: 500, 
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      },
+      body: JSON.stringify(err)
+    };
   }
 };
 

@@ -1,0 +1,13 @@
+{
+  "name": "tesseract",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@shelf/aws-lambda-tesseract": "^4.0.3",
+    "axios": "^1.4.0",
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7",
+    "uuid": "^9.0.0"
+  }
+}

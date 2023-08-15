@@ -24,9 +24,18 @@ pub struct Opt {
     pub verbose: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum ContentType {
+    URL,
+    IMAGE,
+    BULK
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct URLRequest {
     pub url: String,
+    pub content_type: ContentType,
+    pub credit: Option<String>
 }
 
 #[derive(Debug, Serialize)]
@@ -225,5 +234,31 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
                         .body(format!("SNS Publish Failure: {:?}", e))?);
                 }
             };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    #[test]
+    fn test_body() {
+        let body = r#"
+        {
+            "url": "batman.com",
+            "content_type": "IMAGE"
+        }"#;
+        let url: URLRequest = serde_json::from_slice(body.as_bytes()).expect("Problem getting url");
+        let expected = URLRequest {
+            url: String::from("batman.com"),
+            content_type: ContentType::IMAGE
+        };
+        assert_eq!(url, expected);
     }
 }
