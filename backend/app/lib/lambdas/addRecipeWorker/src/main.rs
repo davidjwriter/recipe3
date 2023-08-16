@@ -97,26 +97,8 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn get_image_extension(url: &str) -> Option<&str> {
-    let path = url.split('/').last()?; // Get the last part of the URL, which should be the filename
-    let parts: Vec<&str> = path.split('.').collect(); // Split the filename by dot
-    parts.last().copied() // Return the last part (extension) if available
-}
-
-async fn wait_for_file(file_path: &str, max_retries: usize) -> bool {
-    let mut retries = 0;
-    while retries < max_retries {
-        if std::path::Path::new(file_path).exists() {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        retries += 1;
-    }
-    false
-}
-
 async fn get_image_contents(url: &str) -> Result<SuccessResponse, FailureResponse> {
-    let uri = "https://fjd4m5rkc1.execute-api.us-east-1.amazonaws.com/prod/api";
+    let uri = "http://tesseract.us-east-1.elasticbeanstalk.com/api/image-to-text";
     let request = TesseractRequest {
         url: String::from_str(url),
     };

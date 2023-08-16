@@ -53,31 +53,12 @@ export class Recipe3Stack extends Stack {
       publicReadAccess: true,
     });
 
-    const al2Layer = new lambda.LayerVersion(this, 'al2-layer', {
-      // reference the directory containing the ready-to-use layer
-      code: Code.fromAsset('lib/lambdas/tesseract-py/tesseract/amazonlinux-2'),
-      description: 'AL2 Tesseract Layer',
-    });
-    // const pathToLayerSource = path.resolve(__dirname, '.');
-
-    // const al2Layer = new lambda.LayerVersion(this, 'al2-layer', {
-    //   code: Code.fromAsset(pathToLayerSource, {
-    //     bundling: {
-    //       image: DockerImage.fromBuild(pathToLayerSource, { file: 'Dockerfile' }),
-    //       command: ['/bin/bash', '-c', 'cp -r /opt/build-dist/. /asset-output/'],
-    //     },
-    //   }),
-    //   description: 'AL2 Tesseract Layer',
-    // });
-    // this.renameLogicalId(this.getLogicalId(al2Layer.node.defaultChild as CfnLayerVersion), 'al2layer');
-
     const addRecipeWorker = new Function(this, 'addRecipeWorker', {
       description: "Add recipes worker",
       code: Code.fromAsset('lib/lambdas/addRecipeWorker/target/x86_64-unknown-linux-musl/release/lambda'),
       runtime: Runtime.PROVIDED_AL2,
       handler: 'not.required',
       timeout: Duration.minutes(5),
-      layers: [al2Layer],
       environment: {
         RUST_BACKTRACE: '1',
         TABLE_NAME: 'Recipes',
@@ -140,16 +121,6 @@ export class Recipe3Stack extends Stack {
       }
     });
 
-    const tesseract = new lambda.Function(this, 'tesseract', {
-      code: lambda.Code.fromAsset(path.join(__dirname, '/lambdas/tesseract-py')),
-      runtime: Runtime.PYTHON_3_8,
-      layers: [al2Layer],
-      memorySize: 1024,
-      timeout: Duration.seconds(10),
-      handler: 'handler.main',
-  });
-
-
     // Grant the lambda functions write and read access
     dynamoTable.grantFullAccess(getRecipes);
     dynamoTable.grantFullAccess(addRecipe);
@@ -174,23 +145,10 @@ export class Recipe3Stack extends Stack {
       }
     });
 
-    const tesseractAPI = new RestApi(this, 'TesseractAPI', {
-      restApiName: "Tesseract API",
-      defaultCorsPreflightOptions: {
-        allowOrigins: Cors.ALL_ORIGINS,
-        allowMethods: Cors.ALL_METHODS,
-        allowHeaders: Cors.DEFAULT_HEADERS
-      }
-    });
-
     // Integrate lambda functions with an API gateway
     const mintNFTAPI = new LambdaIntegration(mintNFT);
     const getRecipesAPI = new LambdaIntegration(getRecipes);
     const addRecipeAPI = new LambdaIntegration(addRecipe);
-    const tesseractAPIIntegration = new LambdaIntegration(tesseract);
-
-    const tessy = tesseractAPI.root.addResource('api');
-    tessy.addMethod('POST', tesseractAPIIntegration);
 
     const nfts = nftAPI.root.addResource('api');
     nfts.addMethod('POST', mintNFTAPI);
