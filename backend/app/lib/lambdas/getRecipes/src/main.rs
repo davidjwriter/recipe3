@@ -50,6 +50,7 @@ pub struct Recipe {
     pub notes: String,
     pub summary: String,
     pub image: String,
+    pub credit: String
 }
 
 impl From<&HashMap<String, AttributeValue>> for Recipe {
@@ -62,6 +63,7 @@ impl From<&HashMap<String, AttributeValue>> for Recipe {
             notes: as_string(value.get("notes"), &String::from("NOTES")),
             summary: as_string(value.get("summary"), &String::from("SUMMARY")),
             image: as_string(value.get("image"), &String::from("IMAGE")),
+            credit: as_string(value.get("credit"), &String::from("CREDIT"))
         };
         recipe
     }

@@ -27,12 +27,19 @@ const CreatingRecipeStepper = (props) => {
 
     const submitRecipe = async () => {
         const apiUrl = "https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api";
+        const body = JSON.stringify({ 
+          "url": props.newRecipe["url"],
+          "uuid": props.newRecipe["uuid"],
+          "credit": props.newRecipe["credit"],
+          "content_type": props.newRecipe["contentType"]
+        });
+        console.log(body);
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
             'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ "url": props.url }),
+            body,
         });
 
         if (!response.ok) {
@@ -44,7 +51,8 @@ const CreatingRecipeStepper = (props) => {
 
 
     const getRecipe = async () => {
-        const apiUrl = `https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api?url=${props.url}`;
+        const uuid = props.newRecipe['contentType'] === "URL" ? props.newRecipe["url"] : props.newRecipe["uuid"];
+        const apiUrl = `https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api?url=${uuid}`;
         try {
             const response = await fetch(apiUrl, {
                 method: 'GET'
@@ -64,8 +72,9 @@ const CreatingRecipeStepper = (props) => {
 
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const waitForRecipe = async () => {
+        const uuid = props.newRecipe['contentType'] === "URL" ? props.newRecipe["url"] : props.newRecipe["uuid"];
         let retry = true;
-        const apiUrl = `https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api?url=${props.url}`;
+        const apiUrl = `https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/api?url=${uuid}`;
         while (retry) {
             await delay(10000);
             try {
@@ -121,11 +130,11 @@ const CreatingRecipeStepper = (props) => {
 
     switch (step) {
       case 0:
-        return <CreatingRecipeStep1 step={step} url={props.url}/>
+        return <CreatingRecipeStep1 step={step} newRecipe={props.newRecipe}/>
       case 1:
-        return <CreatingRecipeStep2 step={step} url={props.url}/>
+        return <CreatingRecipeStep2 step={step} newRecipe={props.newRecipe}/>
       case 2:
-        return <CreatingRecipeStep3 step={step} url={props.url} recipe={recipe} handleClose={props.handleClose}/>
+        return <CreatingRecipeStep3 step={step} newRecipe={props.newRecipe} recipe={recipe} handleClose={props.handleClose}/>
       case 3:
         return (
           <Stack sx={{

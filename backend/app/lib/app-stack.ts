@@ -15,6 +15,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { LambdaSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
 import { BlockPublicAccess, BucketAccessControl } from 'aws-cdk-lib/aws-s3';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { AwsIntegration } from 'aws-cdk-lib/aws-apigateway';
 
 export class Recipe3Stack extends Stack {
   constructor(app: App, id: string) {

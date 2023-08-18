@@ -34,8 +34,8 @@ use aws_sdk_s3::Client as s3Client;
 use aws_sdk_s3::operation::put_object::{PutObjectError, PutObjectOutput};
 use aws_sdk_s3::{error::SdkError, primitives::ByteStream};
 use aws_sdk_s3::types::ObjectCannedAcl;
-use rusty_tesseract::{Args, Image};
 use aws_types;
+use std::str::FromStr;
 
 
 const PROMPT: &str = "Using this web page content, parse the recipe out, summarize it, and put it in JSON format using this format: {name: <str>, ingredients: [], instructions: [], notes: <str>, summary: <str>}";
@@ -70,12 +70,18 @@ pub enum ContentType {
 pub struct URLRequest {
     pub url: String,
     pub content_type: ContentType,
-    pub credit: Option<String>
+    pub credit: Option<String>,
+    pub uuid: Option<String>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TesseractRequest {
     pub url: String
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TesseractResponse {
+    pub contents: String
 }
 
 // Implement Display for the Failure response so that we can then implement Error.
@@ -100,7 +106,7 @@ async fn main() -> Result<(), Error> {
 async fn get_image_contents(url: &str) -> Result<SuccessResponse, FailureResponse> {
     let uri = "http://tesseract.us-east-1.elasticbeanstalk.com/api/image-to-text";
     let request = TesseractRequest {
-        url: String::from_str(url),
+        url: String::from_str(url).unwrap(),
     };
     let client = reqwest::Client::new();
     let response = client
@@ -110,10 +116,10 @@ async fn get_image_contents(url: &str) -> Result<SuccessResponse, FailureRespons
         .await.unwrap();
     
     // Parse the response
-    let output: serde_json::Value = response.json().await.unwrap();
+    let output: TesseractResponse = response.json().await.unwrap();
     println!("{:?}", output);
     Ok(SuccessResponse {
-        body: output,
+        body: output.contents,
     })
 }
 
@@ -410,7 +416,8 @@ async fn generate_uuid() -> String {
  * notes: string
  */
 pub async fn add_to_db(client: &DbClient, recipe: Recipe, url: &str, image_url: &str, table: &String, credit: Option<String>) -> Result<String, Error> {
-    let uuid = if let Some(c) = credit {
+    let uuid = AttributeValue::S(url.to_string());
+    let credit = if let Some(c) = credit {
         AttributeValue::S(c)
     } else {
         AttributeValue::S(url.to_string())
@@ -426,6 +433,7 @@ pub async fn add_to_db(client: &DbClient, recipe: Recipe, url: &str, image_url: 
         .put_item()
         .table_name(table)
         .item("uuid", uuid)
+        .item("credit", credit)
         .item("name", name)
         .item("ingredients", ingredients)
         .item("instructions", instructions)
@@ -467,6 +475,13 @@ async fn worker(body: &str) -> Result<String, Error> {
         ContentType::BULK => url_value.clone(),
     };
 
+    // 2. Get the uuid, if recipe URL, use the URL
+    let uuid = match url.content_type {
+        ContentType::URL => url_value,
+        ContentType::IMAGE => url.uuid.unwrap(),
+        ContentType::BULK => url.uuid.unwrap(),
+    };
+
     // 3. Parse recipe from web contents
     let recipe = match parse_recipe(contents).await {
         Ok(r) => r,
@@ -500,7 +515,7 @@ async fn worker(body: &str) -> Result<String, Error> {
             return Ok(String::from("Table Name Not Set"));
         }
     };
-    match add_to_db(&db_client, recipe, &url_value, &image_url, &table_name, url.credit).await {
+    match add_to_db(&db_client, recipe, &uuid, &image_url, &table_name, url.credit).await {
         Ok(_) => {
             return Ok(String::from("Success!"));
         },

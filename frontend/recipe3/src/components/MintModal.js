@@ -47,7 +47,7 @@ ${props.recipe["instructions"].map((instruction, index) => `${index + 1}. ${inst
 ${props.recipe['notes']}
 
 ## Credit
-${props.recipe['uuid']}
+${props.recipe["credit"] === undefined ? props.recipe['uuid'] : props.recipe["credit"]}
     `;
     return markdown;
   }

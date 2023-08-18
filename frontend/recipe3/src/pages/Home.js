@@ -11,11 +11,14 @@ import NewURLRecipeForm from '../components/NewURLRecipeForm';
 import CreatingRecipeModal from '../components/CreatingRecipeModal';
 import Pagination from '@mui/material/Pagination';
 import { useSelector } from 'react-redux';
+import NewRecipeModal from '../components/NewRecipeModal';
+import { v4 as uuidv4 } from 'uuid';
+
 
 
 const Home = (props) => {
     const [recipes, setRecipes] = useState(new Map());
-    const [url, setUrl] = useState("");
+    const [newRecipe, setNewRecipe] = useState("");
     const [newRecipeOpen, setNewRecipeOpen] = useState(false);
     const [creatingRecipeOpen, setCreatingRecipeOpen] = useState(false);
   
@@ -34,9 +37,15 @@ const Home = (props) => {
         window.open('https://commerce.coinbase.com/checkout/5208dfe6-1668-4636-9adc-3c435bdb674b', '_blank');
       }
     
-      const newRecipeSubmit = (url) => {
+      const newRecipeSubmit = (url, credit = '', contentType) => {
         console.log(url);
-        setUrl(url);
+        const newUUID = uuidv4();
+        setNewRecipe({
+          uuid: newUUID,
+          url,
+          credit,
+          contentType
+        });
         setNewRecipeOpen(false);
         setCreatingRecipeOpen(true);
       }
@@ -94,8 +103,8 @@ const Home = (props) => {
           }}
         >
           <Container maxWidth="sm">
-            <NewURLRecipeForm open={newRecipeOpen} handleClose={handleClose} newRecipeSubmit={newRecipeSubmit}/>
-            <CreatingRecipeModal open={creatingRecipeOpen} url={url} handleClose={handleCreationDone}/>
+            <NewRecipeModal open={newRecipeOpen} handleClose={handleClose} newRecipeSubmit={newRecipeSubmit}/>
+            <CreatingRecipeModal open={creatingRecipeOpen} newRecipe={newRecipe} handleClose={handleCreationDone}/>
             <Typography
               component="h1"
               variant="h2"

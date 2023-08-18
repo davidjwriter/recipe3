@@ -35,7 +35,8 @@ pub enum ContentType {
 pub struct URLRequest {
     pub url: String,
     pub content_type: ContentType,
-    pub credit: Option<String>
+    pub credit: Option<String>,
+    pub uuid: Option<String>
 }
 
 #[derive(Debug, Serialize)]

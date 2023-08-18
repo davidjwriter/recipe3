@@ -23,7 +23,18 @@ const Transition = React.forwardRef(function Transition(props, ref) {
 });
 
 export default function RecipeModal(props) {
-
+  const isValidUrl = (string) => {
+    const urlPattern = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/i;
+    return urlPattern.test(string);
+  }
+  const getCredit = (recipe) => {
+      console.log(recipe);
+      if (isValidUrl(recipe["uuid"])) {
+          return recipe["uuid"];
+      } else {
+          return recipe["credit"];
+      }
+  }
   return (
     <div>
       <Dialog
@@ -56,7 +67,7 @@ export default function RecipeModal(props) {
           <Grid item xs={12} sm={6}>
             <RecipeCard recipe={props.recipe} index={0} noButton={true}/>
             <Typography sx={{pt: 3}} variant="h5">Original Recipe</Typography>
-            <Typography variant="h6"><a href={props.recipe["uuid"]}>{props.recipe["uuid"]}</a></Typography>
+            <Typography variant="h6"><a href={getCredit(props.recipe)}>{getCredit(props.recipe)}</a></Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
             <Typography variant="h2">Ingredients</Typography>

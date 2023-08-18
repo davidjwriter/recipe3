@@ -11,6 +11,18 @@ import React from 'react';
 import RecipeCard from "./RecipeCard";
 
 const Recipe = (props) => {
+    const isValidUrl = (string) => {
+        const urlPattern = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/i;
+        return urlPattern.test(string);
+    }
+    const getCredit = (recipe) => {
+        if (isValidUrl(recipe["uuid"])) {
+            return recipe["uuid"];
+        } else {
+            return recipe["credit"];
+        }
+    }
+
     return (
         <React.Fragment>
             <Box
@@ -30,7 +42,7 @@ const Recipe = (props) => {
                 {props.recipe["name"]}
                 </Typography>
                 <Typography variant="h5" align="center" color="text.secondary" paragraph>
-                    by {props.recipe["uuid"]}
+                    by {getCredit(props.recipe)}
                 </Typography>
             </Container>
             </Box>

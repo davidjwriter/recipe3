@@ -23,7 +23,7 @@ export default function NewURLRecipeForm(props) {
 
 
   const handleSubmit = () => {
-    props.newRecipeSubmit(url);
+    props.newRecipeSubmit(url, url, "URL");
   }
   return (
     <div>
@@ -45,6 +45,7 @@ export default function NewURLRecipeForm(props) {
           />
         </DialogContent>
         <DialogActions>
+          <Button onClick={props.handleBack}>Back</Button>
           <Button onClick={props.handleClose}>Cancel</Button>
           <Button disables={!validUrl} onClick={handleSubmit}>Submit</Button>
         </DialogActions>
