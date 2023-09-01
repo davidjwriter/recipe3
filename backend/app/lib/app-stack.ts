@@ -24,6 +24,7 @@ export class Recipe3Stack extends Stack {
     const openAiApiKey = process.env.OPEN_AI_API_KEY || 'NO_API_KEY';
     const privateKey = process.env.PRIVATE_KEY || 'NO_PRIVATE_KEY';
     const nftStoreApiKey = process.env.NFT_STORAGE_API_KEY || 'No NFT Store API Key';
+    const cloudConvertApiKey = process.env.CLOUD_CONVERT_API_KEY || 'No Cloud Conver API Key';
 
     // Setup our dynamo db table
     const dynamoTable = new Table(this, 'Recipes', {
@@ -54,6 +55,23 @@ export class Recipe3Stack extends Stack {
       publicReadAccess: true,
     });
 
+        // Create an IAM role for the Lambda function
+        const lambdaRole = new iam.Role(this, 'LambdaRole', {
+          assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        });
+    
+        // Attach the basic Lambda execution policy (You can adjust permissions as needed)
+        lambdaRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'));
+    
+        // Create a policy statement for creating SNS topics
+        const sqsPolicyStatement = new iam.PolicyStatement();
+        sqsPolicyStatement.addActions('sqs:CreateQueue', 'sqs:SendMessage'); // Add additional permissions as needed
+        sqsPolicyStatement.addAllResources(); // Grant access to all SNS resources, adjust as needed
+    
+        // Attach the policy statement to the IAM role
+        lambdaRole.addToPolicy(sqsPolicyStatement);
+  
+
     const addRecipeWorker = new Function(this, 'addRecipeWorker', {
       description: "Add recipes worker",
       code: Code.fromAsset('lib/lambdas/addRecipeWorker/target/x86_64-unknown-linux-musl/release/lambda'),
@@ -64,9 +82,11 @@ export class Recipe3Stack extends Stack {
         RUST_BACKTRACE: '1',
         TABLE_NAME: 'Recipes',
         OPEN_AI_API_KEY: openAiApiKey,
-        BUCKET_NAME: s3Bucket.bucketName
+        BUCKET_NAME: s3Bucket.bucketName,
+        CLOUD_CONVERT_API_KEY: cloudConvertApiKey
       },
-      logRetention: RetentionDays.ONE_WEEK
+      logRetention: RetentionDays.ONE_WEEK,
+      role: lambdaRole
     });
 
     s3Bucket.grantWrite(addRecipeWorker);
@@ -92,7 +112,8 @@ export class Recipe3Stack extends Stack {
         TABLE_NAME: 'Recipes',
         SNS_ARN: recipeTopic.topicArn
       },
-      logRetention: RetentionDays.ONE_WEEK
+      logRetention: RetentionDays.ONE_WEEK,
+      role: lambdaRole
     });
 
     recipeTopic.grantPublish(addRecipe);

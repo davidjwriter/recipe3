@@ -29,7 +29,7 @@ export default function CreatingRecipeModal(props) {
         aria-labelledby="modal-modal-title"
         aria-describedby="modal-modal-description"
         >
-            <CreatingRecipeStepper handleClose={props.handleClose} newRecipe={props.newRecipe}/>
+            <CreatingRecipeStepper handleSuccess={props.handleSuccess} handleFailed={props.handleFailed} handleClose={props.handleClose} newRecipe={props.newRecipe}/>
         </Modal>
     </div>
     );

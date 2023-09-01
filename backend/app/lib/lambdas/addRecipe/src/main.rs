@@ -13,7 +13,10 @@ use aws_sdk_sns::Client as SnsClient;
 use futures_util::StreamExt;
 use rayon::iter::ParallelIterator;
 use std::iter::Iterator;
+use uuid::Uuid;
 use lambda_http::{service_fn, Response, Body, Error, Request};
+use serde_json::json;
+use aws_sdk_sqs::Client as SqsClient;
 
 
 #[derive(Debug)]
@@ -37,6 +40,15 @@ pub struct URLRequest {
     pub content_type: ContentType,
     pub credit: Option<String>,
     pub uuid: Option<String>
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct WorkerRequest {
+    pub url: String,
+    pub content_type: ContentType,
+    pub credit: Option<String>,
+    pub uuid: Option<String>,
+    pub sqs_url: String
 }
 
 #[derive(Debug, Serialize)]
@@ -159,6 +171,10 @@ async fn get_recipe_from_db(client: &DbClient, table_name: &str, url: &str) -> R
     }
 }
 
+async fn generate_uuid() -> String {
+    Uuid::new_v4().to_string()
+}
+
 async fn handler(request: Request) -> Result<Response<String>, Error> {
     // 1. Create db client and get table name from env
     let opt = Opt {
@@ -191,7 +207,12 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
     let url_value = &url.url;
     println!("URL: {}", url_value);
 
-    let result = get_recipe_from_db(&db_client, &table_name, url_value).await?;
+    let pk = match url.content_type {
+        ContentType::URL => url_value.to_string(),
+        _ => url.uuid.as_ref().unwrap().clone(),
+    };
+
+    let result = get_recipe_from_db(&db_client, &table_name, &pk).await?;
 
     if let Some(recipe) = result {
         println!("Found recipe");
@@ -212,7 +233,25 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
         };
         println!("SNS ARN: {:?}", sns_arn);
         let sns_client = SnsClient::new(&config);
-        let message = serde_json::to_string(&url).unwrap();
+        let sqs_client = SqsClient::new(&config);
+
+        let sqs_url_response = sqs_client
+            .create_queue()
+            .queue_name(generate_uuid().await)
+            .send().await.unwrap();
+        let sqs_url = sqs_url_response.queue_url().unwrap();
+        let sqs_request = WorkerRequest {
+            url: url.url,
+            content_type: url.content_type,
+            credit: url.credit,
+            uuid: url.uuid,
+            sqs_url: sqs_url.to_string()
+        };
+        let message = serde_json::to_string(&sqs_request).unwrap();
+        let response = json!({
+            "sqs_url": sqs_url
+        });
+        let response = serde_json::to_string(&response).unwrap();
         println!("Message: {}", message);
         match sns_client
             .publish()
@@ -225,7 +264,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
                     return Ok(Response::builder()
                         .status(201)
                         .header("Access-Control-Allow-Origin", "*")
-                        .body(String::from("Published New Recipe!"))?);
+                        .body(response)?);
                 },
                 Err(e) => {
                     println!("SNS Publish Failure: {:?}", e);

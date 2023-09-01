@@ -23,7 +23,7 @@ export default function NewRawRecipeForm(props) {
 
 
   const handleSubmit = () => {
-    props.newRecipeSubmit(text, credit, "BULK");
+    props.newRecipeSubmit(text.replaceAll("\n", " "), credit, "BULK");
   }
   return (
     <div>

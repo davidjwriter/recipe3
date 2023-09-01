@@ -13,8 +13,12 @@ import Pagination from '@mui/material/Pagination';
 import { useSelector } from 'react-redux';
 import NewRecipeModal from '../components/NewRecipeModal';
 import { v4 as uuidv4 } from 'uuid';
+import Snackbar from '@mui/material/Snackbar';
+import MuiAlert from '@mui/material/Alert';
 
-
+const Alert = React.forwardRef(function Alert(props, ref) {
+  return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
+});
 
 const Home = (props) => {
     const [recipes, setRecipes] = useState(new Map());
@@ -28,6 +32,15 @@ const Home = (props) => {
   
     const RECIPE_PER_PAGE = 6;
     const [page, setPage] = useState(1);
+
+    const [success, setSuccess] = useState(false);
+    const [failed, setFailed] = useState(false);
+
+    const handleSuccessClose = () => { setSuccess(false); }
+    const handleFailClose = () => { setFailed(false); }
+
+    const handleSuccess = () => { setSuccess(true); }
+    const handleFailed = () => { setFailed(true); }
 
     const handlePageChange = (e, p) => {
         setPage(p);
@@ -103,8 +116,18 @@ const Home = (props) => {
           }}
         >
           <Container maxWidth="sm">
+            <Snackbar open={success} autoHideDuration={6000} onClose={handleSuccessClose}>
+              <Alert onClose={handleSuccessClose} severity="success" sx={{ width: '100%' }}>
+                Successfully created the recipe!
+              </Alert>
+            </Snackbar>
+            <Snackbar open={failed} autoHideDuration={6000} onClose={handleFailClose}>
+              <Alert onClose={handleFailClose} severity="error" sx={{ width: '100%' }}>
+                Could not create recipe, please try again :/
+              </Alert>
+            </Snackbar>
             <NewRecipeModal open={newRecipeOpen} handleClose={handleClose} newRecipeSubmit={newRecipeSubmit}/>
-            <CreatingRecipeModal open={creatingRecipeOpen} newRecipe={newRecipe} handleClose={handleCreationDone}/>
+            <CreatingRecipeModal open={creatingRecipeOpen} newRecipe={newRecipe} handleClose={handleCreationDone} handleSuccess={handleSuccess} handleFailed={handleFailed}/>
             <Typography
               component="h1"
               variant="h2"

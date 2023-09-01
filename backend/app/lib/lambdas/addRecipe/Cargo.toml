@@ -25,6 +25,7 @@ scraper = "0.17.1"
 tokio-test = "0.4.2"
 lambda_http = "0.8.1"
 aws-sdk-sns = "0.28.0"
+aws-sdk-sqs = "0.28.0"
 
 [[bin]]
 name = "bootstrap"

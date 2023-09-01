@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use futures_util::future::join_all;
 use reqwest::get;
@@ -36,9 +36,11 @@ use aws_sdk_s3::{error::SdkError, primitives::ByteStream};
 use aws_sdk_s3::types::ObjectCannedAcl;
 use aws_types;
 use std::str::FromStr;
+use aws_sdk_sns::Client as SnsClient;
+use aws_sdk_sqs::Client as SqsClient;
 
 
-const PROMPT: &str = "Using this web page content, parse the recipe out, summarize it, and put it in JSON format using this format: {name: <str>, ingredients: [], instructions: [], notes: <str>, summary: <str>}";
+const PROMPT: &str = "Parse the recipe from the web page content and format it in JSON with the following structure: {name: <str>, ingredients: [], instructions: [], notes: <str>, summary: <str>}. If the words don't have spaces, add spaces so it's readable. Ensure the ingredients and instructions are a list of strings, if they have sections, just add the header as an item in the list.";
 
 #[derive(Debug, Serialize)]
 pub struct SuccessResponse {
@@ -48,6 +50,14 @@ pub struct SuccessResponse {
 #[derive(Debug, Serialize)]
 pub struct FailureResponse {
     pub body: String,
+}
+
+type WorkerResponse = Result<SuccessResponse, FailureResponse>;
+
+#[derive(Serialize)]
+pub struct SqsResponse {
+    pub status_code: u16,
+    pub body: String
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,7 +81,8 @@ pub struct URLRequest {
     pub url: String,
     pub content_type: ContentType,
     pub credit: Option<String>,
-    pub uuid: Option<String>
+    pub uuid: Option<String>,
+    pub sqs_url: String
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -102,11 +113,61 @@ async fn main() -> Result<(), Error> {
 
     Ok(())
 }
+fn is_heic_url(url: &str) -> bool {
+    url.ends_with(".heic")
+}
 
-async fn get_image_contents(url: &str) -> Result<SuccessResponse, FailureResponse> {
+async fn convert_heic_to_png(url: &str) -> String {
+    let uri = "https://api.cloudconvert.com/v2/jobs";
+    let body = json!({
+            "tasks": {
+                "convert_heic": {
+                    "operation": "import/url",
+                    "url": url
+                },
+                "to_png": {
+                    "operation": "convert",
+                    "input_format": "heic",
+                    "output_format": "png",
+                    "engine": "imagemagick",
+                    "input": [
+                        "convert_heic"
+                    ],
+                    "fit": "max",
+                    "strip": false,
+                    "quality": 75
+                },
+                "recipe-image": {
+                    "operation": "export/url",
+                    "input": [
+                        "to_png"
+                    ],
+                    "inline": false,
+                    "archive_multiple_files": false
+                }
+            },
+            "tag": "jobbuilder"
+        });
+    let client = reqwest::Client::new();
+    println!("{:?}", body);
+    let response = client
+        .post(uri)
+        .header("Authorization", format!("Bearer {}", get_cloud_convert_api_key().await.unwrap()))
+        .json(&body)
+        .send()
+        .await.unwrap();
+    println!("{:?}", response);
+    String::from("new url")
+}
+
+async fn get_image_contents(image_url: &str) -> Result<SuccessResponse, FailureResponse> {
     let uri = "http://tesseract.us-east-1.elasticbeanstalk.com/api/image-to-text";
+    let mut url = image_url.to_string();
+    if is_heic_url(&url) {
+        url = convert_heic_to_png(&url).await.to_string();
+    }
     let request = TesseractRequest {
-        url: String::from_str(url).unwrap(),
+        url: url,
     };
     let client = reqwest::Client::new();
     let response = client
@@ -116,7 +177,14 @@ async fn get_image_contents(url: &str) -> Result<SuccessResponse, FailureRespons
         .await.unwrap();
     
     // Parse the response
-    let output: TesseractResponse = response.json().await.unwrap();
+    let output: TesseractResponse = match response.json().await {
+        Ok(t) => t,
+        Err(err) => {
+            return Err(FailureResponse {
+                body: err.to_string(),
+            });
+        }
+    };
     println!("{:?}", output);
     Ok(SuccessResponse {
         body: output.contents,
@@ -190,8 +258,8 @@ async fn get_web_contents(url: &str) -> Result<SuccessResponse, FailureResponse>
     });
 }
 
-async fn get_tessdata() -> Option<String> {
-    env::var("TESSDATA_PREFIX").ok()
+async fn get_cloud_convert_api_key() -> Option<String> {
+    env::var("CLOUD_CONVERT_API_KEY").ok()
 }
 
 async fn get_api_key() -> Option<String> {
@@ -363,7 +431,16 @@ async fn parse_recipe(contents: String) -> Result<Recipe, FailureResponse> {
                 })
             },
         };
-        let recipe: Recipe = match serde_json::from_str(&generated_content) {
+        let content = match extract_json(&generated_content) {
+            Some(s) => s,
+            None => {
+                println!("Error parsing recipe conents!");
+                return Err(FailureResponse {
+                    body: format!("Error parsing recipe contents!")
+                });            
+            },
+        };
+        let recipe: Recipe = match serde_json::from_str(&content) {
             Ok(r) => r,
             Err(e) => {
                 println!("Error parsing JSON {:?}", e);
@@ -447,7 +524,48 @@ pub async fn add_to_db(client: &DbClient, recipe: Recipe, url: &str, image_url: 
 
     Ok(String::from("Recipe Added!"))
 }
+fn extract_json(json_string: &str) -> Option<String> {
+    // Find the positions of the first opening and closing curly braces
+    let start_pos = json_string.find('{');
+    let end_pos = json_string.find('}');
 
+    if let (Some(start), Some(end)) = (start_pos, end_pos) {
+        // Extract the content between the curly braces, including the braces themselves
+        let json_body = &json_string[start..=end];
+        return Some(json_body.trim().to_string());
+    }
+
+    // If no match was found, return None
+    None
+}
+
+async fn send_message(sqs_response: SqsResponse, body: &str) {
+    let request: URLRequest = match serde_json::from_str(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("Error getting request");
+            return
+        }
+    };
+
+    let sqs_url = request.sqs_url;
+
+    let config: aws_types::sdk_config::SdkConfig = aws_config::load_from_env().await;
+
+    let sqs_client = SqsClient::new(&config);
+
+    let message = serde_json::to_string(&sqs_response).unwrap();
+    println!("Message: {:?}", message);
+    match sqs_client
+        .send_message()
+        .queue_url(sqs_url)
+        .message_body(message)
+        .send()
+        .await {
+            Ok(s) => println!("SNS Publish Success! {:?}", s),
+            Err(e) => println!("SNS Pulish Failed! {:?}", e)
+        };
+}
 /**
  * We need a new function that can take in different types of raw contents
  * URL of recipe
@@ -456,13 +574,17 @@ pub async fn add_to_db(client: &DbClient, recipe: Recipe, url: &str, image_url: 
  * Then we move to the worker where it takes in the contents and goes from there
  */
 
-async fn worker(body: &str) -> Result<String, Error> {
+async fn worker(body: &str) -> WorkerResponse {
     let config: aws_types::sdk_config::SdkConfig = aws_config::load_from_env().await;
     let url: URLRequest = match serde_json::from_str(&body) {
         Ok(u) => u,
         Err(e) => {
             println!("Error matching URL: {:?}", e);
-            return Ok(format!("Error matching URL: {:?}", e));
+            return Err(
+                FailureResponse {
+                    body: format!("Error matching URL: {:?}", e)
+                }
+            );
         }
     };
     let url_value = url.url;
@@ -486,7 +608,11 @@ async fn worker(body: &str) -> Result<String, Error> {
     let recipe = match parse_recipe(contents).await {
         Ok(r) => r,
         Err(e) => {
-            return Ok(format!("Error parsing recipe: {:?}", e));
+            return Err(
+                FailureResponse {
+                    body: format!("Error parsing recipe: {:?}", e)
+                }
+            );
         },
     };
 
@@ -512,15 +638,27 @@ async fn worker(body: &str) -> Result<String, Error> {
     let table_name = match get_table_name().await {
         Some(t) => t,
         None => {
-            return Ok(String::from("Table Name Not Set"));
+            return Err(
+                FailureResponse {
+                    body: format!("Table Name Not Set")
+                }
+            );
         }
     };
     match add_to_db(&db_client, recipe, &uuid, &image_url, &table_name, url.credit).await {
         Ok(_) => {
-            return Ok(String::from("Success!"));
+            return Ok(
+                SuccessResponse {
+                    body: format!("Success")
+                }
+            );
         },
         Err(e) => {
-            return Ok(format!("Failed! {:?}", e));
+            return Err(
+                FailureResponse {
+                    body: format!("Failed! {:?}", e)
+                }
+            );
         }
     };
 }
@@ -532,7 +670,17 @@ async fn handler(event: LambdaEvent<sns::SnsEvent>) -> Result<String, Error> {
 
     // 2. iterate through records and call worker function
     for record in records {
-        worker(&record.sns.message).await?;
+        let message = match worker(&record.sns.message).await {
+            Ok(s) => SqsResponse {
+                status_code: 200,
+                body: s.body
+            },
+            Err(e) => SqsResponse {
+                status_code: 500,
+                body: e.body
+            }
+        };
+        send_message(message, &record.sns.message).await;
     }
 
     Ok("Success!".to_string())
@@ -632,6 +780,14 @@ mod tests {
         let region = config.region().unwrap().as_ref();
         let arweave_url = aw!(upload_to_s3(base64_encoded, &s3_client, region.to_string()));
         println!("S3 URL: {:?}", arweave_url);
+    }
+
+    #[test]
+    fn test_cloud_convert() {
+        dotenv::from_filename("../../.env").ok();
+        let url = "https://recipe3stack-recipeuploads4499815a-imruc63nb0r1.s3.amazonaws.com/IMG_1723.heic";
+        let res = aw!(convert_heic_to_png(url));
+        println!("{:?}", res);
     }
 
 }
