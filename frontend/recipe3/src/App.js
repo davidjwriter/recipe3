@@ -41,7 +41,8 @@ const defaultTheme = createTheme();
 
 export default function App() {
 
-  const clientId = "BI7xpIodiQQObdUMmpKq6nHgQPGfGVHWVNQ3upknWeB1mLED11GRJ7sC5Jju-9T4Hri7hNt6_nZ4he_ExmanbWU";
+  // const clientId = "BI7xpIodiQQObdUMmpKq6nHgQPGfGVHWVNQ3upknWeB1mLED11GRJ7sC5Jju-9T4Hri7hNt6_nZ4he_ExmanbWU";
+  const clientId = "BH3fDftIO4s-Lo7gC0GjnJ7NFTymRgp_8vh3S_8dT-7Ul0IGs5C-uVwlX_2YRzVhnzLcPZRGrHYis7tWFoIAYRE";
   const [web3auth, setWeb3auth] = useState(null);
 
   const dispatch = useDispatch();
@@ -59,7 +60,7 @@ export default function App() {
             chainId: "0x13881",
             rpcTarget: "https://rpc-mumbai.maticvigil.com/",
           },
-          web3AuthNetwork: "testnet"
+          web3AuthNetwork: "mainnet"
         });
 
         setWeb3auth(web3auth);
