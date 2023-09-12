@@ -59,6 +59,7 @@ export default function App() {
             chainId: "0x13881",
             rpcTarget: "https://rpc-mumbai.maticvigil.com/",
           },
+          web3AuthNetwork: "Sapphire"
         });
 
         setWeb3auth(web3auth);
