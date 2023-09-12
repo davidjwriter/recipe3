@@ -42,7 +42,7 @@ const defaultTheme = createTheme();
 export default function App() {
 
   // const clientId = "BI7xpIodiQQObdUMmpKq6nHgQPGfGVHWVNQ3upknWeB1mLED11GRJ7sC5Jju-9T4Hri7hNt6_nZ4he_ExmanbWU";
-  const clientId = "BH3fDftIO4s-Lo7gC0GjnJ7NFTymRgp_8vh3S_8dT-7Ul0IGs5C-uVwlX_2YRzVhnzLcPZRGrHYis7tWFoIAYRE";
+  const clientId = "BEGQSzVP1hQq_TWWAB4jHasLGHfFnfU2FGlC3Sxm98lQMRUZz3FfrkqIM5arSIwW3hLlFowHDBi5ryKi4ZI1TAk";
   const [web3auth, setWeb3auth] = useState(null);
 
   const dispatch = useDispatch();
