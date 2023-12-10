@@ -16,6 +16,8 @@ use http::header::HeaderMap;
 use lambda_http::ext::extensions::RequestExt;
 use lambda_http::http::Uri;
 use query_map::QueryMap;
+use lambda_http::request::from_str;
+
 
 
 
@@ -150,12 +152,12 @@ async fn fetch_recipes(client: &DbClient, table_name: &String, recipe_meta_data_
 fn get_request_username(request: Request) -> Option<RequestBody> {
     let query_params = request.query_string_parameters();
     println!("Query Params: {:?}", query_params);
-    if let Some(usernames) = query_params.all("username") {
-        return Some(RequestBody {
-            username: usernames[0].to_string()
-        });
+    if let Some(params) = query_params.all("username") {
+        Some(RequestBody {
+            username: params[0].to_string()
+        })
     } else {
-        return None;
+        None
     }
 }
 
@@ -169,7 +171,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             Ok(c) => c,
             Err(e) => {
                 return Ok(Response::builder()
-                .status(500)
+                .status(400)
                 .body(format!("Error making config: {}", e.to_string()))?);
                 
             },
@@ -180,7 +182,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             Some(t) => t,
             None => {
                 return Ok(Response::builder()
-                .status(500)
+                .status(400)
                 .body(String::from("TABLE_NAME not set"))?);
             }
         };
@@ -189,7 +191,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             Some(t) => t,
             None => {
                 return Ok(Response::builder()
-                .status(500)
+                .status(400)
                 .body(String::from("TABLE_NAME not set"))?);
             }
         };
@@ -199,7 +201,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             Some(u) => u,
             None => {
                 return Ok(Response::builder()
-                    .status(500)
+                    .status(400)
                     .body(String::from("No username supplied"))?);
             }
         };
@@ -210,7 +212,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             .table_name(user_table_name)
             .key_condition_expression("#un = :username")
             .expression_attribute_names("#un", "username")
-            .expression_attribute_values(":username", AttributeValue::N(user.username))
+            .expression_attribute_values(":username", AttributeValue::S(user.username))
             .send()
             .await?;
 
@@ -224,7 +226,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
                 Ok(r) => r,
                 Err(e) => {
                     return Ok(Response::builder()
-                        .status(500)
+                        .status(400)
                         .body(format!("Error fetching recipes: {}", e))?);
                 }
             };
@@ -241,6 +243,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
         }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,15 +257,12 @@ mod tests {
     #[test]
     fn test_collect_recipe() {
         dotenv::from_filename("../../.env").ok();
-        // Simulating a request URL with query parameters
-        let uri = Uri::builder()
-            .path_and_query("https://myapi.com/?username=dmbluesmith")
-            .build()
-            .expect("Failed to build URI");
-
-        // Create a request with the constructed URI
-        let mut req = Request::default();
-        *req.uri_mut() = uri;
+        let req = from_str(
+            r#"{
+                "httpMethod": "GET",
+                "queryStringParameters": { "username": "dmbluesmith"}
+            }"#
+        ).unwrap();
 
         // Call the handler function with the constructed request
         println!("Request: {:?}", req);
