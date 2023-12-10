@@ -22,6 +22,9 @@ jobs:
         run: |
           sudo apt-get install musl-tools
           
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+        
       - name: Synthesize CDK Stack
         run: |
           cd backend/app
@@ -46,9 +49,6 @@ jobs:
 
           cd ../getUserRecipes
           ./build.sh
-
-      - name: Install AWS CDK
-        run: npm install -g aws-cdk
 
       - name: Deploy CDK Stack
         run: |
