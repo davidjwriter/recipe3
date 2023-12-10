@@ -44,6 +44,21 @@ export class Recipe3Stack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN, // NOT recommended for production code
     });
 
+    // User's dynamo db table
+    const userTable = new Table(this, 'RecipeBooks', {
+      partitionKey: {
+        name: 'username',
+        type: AttributeType.STRING
+      },
+      sortKey: {
+        name: 'uuid',
+        type: AttributeType.STRING
+      },
+      readCapacity: 1,
+      writeCapacity: 1,
+      tableName: 'RecipeBooks'
+    });
+
 
     // Lambda function to add a new recipe
     // Expects a string URL
@@ -55,21 +70,21 @@ export class Recipe3Stack extends Stack {
       publicReadAccess: true,
     });
 
-        // Create an IAM role for the Lambda function
-        const lambdaRole = new iam.Role(this, 'LambdaRole', {
-          assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-        });
-    
-        // Attach the basic Lambda execution policy (You can adjust permissions as needed)
-        lambdaRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'));
-    
-        // Create a policy statement for creating SNS topics
-        const sqsPolicyStatement = new iam.PolicyStatement();
-        sqsPolicyStatement.addActions('sqs:CreateQueue', 'sqs:SendMessage'); // Add additional permissions as needed
-        sqsPolicyStatement.addAllResources(); // Grant access to all SNS resources, adjust as needed
-    
-        // Attach the policy statement to the IAM role
-        lambdaRole.addToPolicy(sqsPolicyStatement);
+    // Create an IAM role for the Lambda function
+    const lambdaRole = new iam.Role(this, 'LambdaRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+    });
+
+    // Attach the basic Lambda execution policy (You can adjust permissions as needed)
+    lambdaRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'));
+
+    // Create a policy statement for creating SNS topics
+    const sqsPolicyStatement = new iam.PolicyStatement();
+    sqsPolicyStatement.addActions('sqs:CreateQueue', 'sqs:SendMessage'); // Add additional permissions as needed
+    sqsPolicyStatement.addAllResources(); // Grant access to all SNS resources, adjust as needed
+
+    // Attach the policy statement to the IAM role
+    lambdaRole.addToPolicy(sqsPolicyStatement);
   
 
     const addRecipeWorker = new Function(this, 'addRecipeWorker', {
@@ -118,6 +133,36 @@ export class Recipe3Stack extends Stack {
 
     recipeTopic.grantPublish(addRecipe);
 
+    // Add recipe to user's recipe book
+    const collectRecipe = new Function(this, 'collectRecipe', {
+      description: "Add user recipe",
+      code: Code.fromAsset('lib/lambdas/collectRecipe/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      environment: {
+        RUST_BACKTRACE: '1',
+        TABLE_NAME: 'RecipeBooks',
+      },
+      logRetention: RetentionDays.ONE_WEEK
+    });
+
+    // Get a user's recipe book
+    const getUserRecipes = new Function(this, 'getUserRecipes', {
+      description: "Get user's recipe book",
+      code: Code.fromAsset('lib/lambdas/getUserRecipes/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      environment: {
+        RUST_BACKTRACE: '1',
+        USER_TABLE_NAME: 'RecipeBooks',
+        RECIPE_TABLE_NAME: 'Recipes',
+      },
+      logRetention: RetentionDays.ONE_WEEK
+    });
+
+    userTable.grantFullAccess(collectRecipe);
+    userTable.grantFullAccess(getUserRecipes);
+
     // Gets all recipes from dynamoDB
     const getRecipes = new Function(this, 'getRecipes', {
       description: "Add recipes",
@@ -130,6 +175,7 @@ export class Recipe3Stack extends Stack {
       },
       logRetention: RetentionDays.ONE_WEEK
     });
+
 
     // Lambda for minting a recipe
     const mintNFT = new Function(this, 'mintRecipe', {
@@ -158,26 +204,23 @@ export class Recipe3Stack extends Stack {
       }
     });
 
-    const nftAPI = new RestApi(this, 'MintRecipe3API', {
-      restApiName: "Mint Recipe3 API",
-      defaultCorsPreflightOptions: {
-        allowOrigins: Cors.ALL_ORIGINS,
-        allowMethods: Cors.ALL_METHODS,
-        allowHeaders: Cors.DEFAULT_HEADERS
-      }
-    });
-
     // Integrate lambda functions with an API gateway
     const mintNFTAPI = new LambdaIntegration(mintNFT);
     const getRecipesAPI = new LambdaIntegration(getRecipes);
     const addRecipeAPI = new LambdaIntegration(addRecipe);
+    const collectRecipeAPI = new LambdaIntegration(collectRecipe);
+    const getUserRecipesAPI = new LambdaIntegration(getUserRecipes);
 
-    const nfts = nftAPI.root.addResource('api');
-    nfts.addMethod('POST', mintNFTAPI);
+    const mint = api.root.addResource('mint');
+    mint.addMethod('POST', mintNFTAPI);
 
     const books = api.root.addResource('api');
     books.addMethod('POST', addRecipeAPI);
     books.addMethod('GET', getRecipesAPI);
+
+    const collect = api.root.addResource('collect');
+    collect.addMethod('POST', collectRecipeAPI);
+    collect.addMethod('GET', getUserRecipesAPI);
   }
 }
 
