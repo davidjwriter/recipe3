@@ -21,7 +21,13 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get install musl-tools
-
+          
+      - name: Synthesize CDK Stack
+        run: |
+          cd backend/app
+          npm install
+          cdk synth
+          
       - name: Build Lambda Functions
         run: |
           rustup target add x86_64-unknown-linux-musl
@@ -43,12 +49,6 @@ jobs:
 
       - name: Install AWS CDK
         run: npm install -g aws-cdk
-
-      - name: Synthesize CDK Stack
-        run: |
-          cd backend/app
-          npm install
-          cdk synth
 
       - name: Deploy CDK Stack
         run: |
