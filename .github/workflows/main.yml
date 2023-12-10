@@ -25,11 +25,10 @@ jobs:
       - name: Install AWS CDK
         run: npm install -g aws-cdk
         
-      - name: Synthesize CDK Stack
+      - name: Deploy CDK Stack
         run: |
           cd backend/app
-          npm install
-          cdk synth
+          cdk deploy --require-approval never
           
       - name: Build Lambda Functions
         run: |
@@ -50,10 +49,6 @@ jobs:
           cd ../getUserRecipes
           ./build.sh
 
-      - name: Deploy CDK Stack
-        run: |
-          cd backend/app
-          cdk deploy --require-approval never
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
