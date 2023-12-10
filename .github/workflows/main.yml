@@ -1,0 +1,49 @@
+name: Deploy Lambda Functions
+
+on:
+  push:
+    branches:
+      - main # Adjust to your branch name
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Rust
+        uses: actions/setup-rust@v1
+        with:
+          rust-version: 'stable'
+
+      - name: Build Lambda Functions
+        run: |
+          cd backend/app/lib/lambdas/addRecipe
+          ./build.sh
+          
+          cd ../addRecipeWorker
+          ./build.sh
+
+          cd ../collectRecipe
+          ./build.sh
+
+          cd ../getRecipes
+          ./build.sh
+
+          cd ../getUserRecipes
+          ./build.sh
+
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+
+      - name: Synthesize CDK Stack
+        run: cdk synth
+
+      - name: Deploy CDK Stack
+        run: cdk deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
