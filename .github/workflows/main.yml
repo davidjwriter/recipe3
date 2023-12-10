@@ -19,6 +19,8 @@ jobs:
       - name: Deploy CDK Stack
         run: |
           cd backend/app
+          npm install
+          ls
           cdk deploy --require-approval never
 
       - name: Set up Rust
