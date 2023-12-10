@@ -13,16 +13,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Install AWS CDK
-        run: npm install -g aws-cdk
-        
-      - name: Deploy CDK Stack
-        run: |
-          cd backend/app
-          npm install
-          ls
-          cdk deploy --require-approval never
-
       - name: Set up Rust
         uses: ATiltedTree/setup-rust@v1
         with:
@@ -50,7 +40,15 @@ jobs:
 
           cd ../getUserRecipes
           ./build.sh
-
+          
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+        
+      - name: Deploy CDK Stack
+        run: |
+          cd backend/app
+          npm install
+          cdk deploy --require-approval never
 
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
