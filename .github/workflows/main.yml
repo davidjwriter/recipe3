@@ -20,6 +20,8 @@ jobs:
 
       - name: Build Lambda Functions
         run: |
+          rustup target add x86_64-unknown-linux-musl
+          
           cd backend/app/lib/lambdas/addRecipe
           ./build.sh
           
