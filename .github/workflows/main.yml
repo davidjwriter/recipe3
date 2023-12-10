@@ -22,16 +22,6 @@ jobs:
         run: |
           sudo apt-get install musl-tools
           
-      - name: Install AWS CDK
-        run: npm install -g aws-cdk
-        
-      - name: Deploy CDK Stack
-        run: |
-          cd backend/app
-          ls
-          ls lib/
-          cdk deploy --require-approval never
-          
       - name: Build Lambda Functions
         run: |
           rustup target add x86_64-unknown-linux-musl
@@ -50,6 +40,14 @@ jobs:
 
           cd ../getUserRecipes
           ./build.sh
+
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+        
+      - name: Deploy CDK Stack
+        run: |
+          cd backend/app
+          cdk deploy --require-approval never
 
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
