@@ -2,7 +2,6 @@ app-stack.js
 !jest.config.js
 *.d.ts
 node_modules
-bin
 target
 *.lock
 .env

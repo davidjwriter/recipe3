@@ -106,3 +106,33 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             .status(200)
             .body(String::from("Collected!"))?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    #[test]
+    fn test_collect_recipe() {
+        // #[derive(Deserialize)]
+        // pub struct RequestBody {
+        //     pub username: String,
+        //     pub uuid: String
+        // }
+        let body = r#"
+        {
+            "username": "dmbluesmith",
+            "uuid": "https://tasty.co/recipe/slow-cooker-loaded-potato-soup"
+        }"#;
+        let req = Request::builder()
+            .method("POST")
+            .body(body)
+            .unwrap();
+        aw!(handler(req));
+    }
+}
