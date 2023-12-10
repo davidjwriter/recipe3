@@ -17,6 +17,10 @@ jobs:
         uses: ATiltedTree/setup-rust@v1
         with:
           rust-version: 'stable'
+          
+      - name: Install Dependencies
+        run: |
+          sudo apt-get install musl-tools
 
       - name: Build Lambda Functions
         run: |
