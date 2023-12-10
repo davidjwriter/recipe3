@@ -129,10 +129,7 @@ mod tests {
             "username": "dmbluesmith",
             "uuid": "https://tasty.co/recipe/slow-cooker-loaded-potato-soup"
         }"#;
-        let req = Request::builder()
-            .method("POST")
-            .body(body)
-            .unwrap();
+        let req = Request::new(Body::from(body));
         aw!(handler(req));
     }
 }
