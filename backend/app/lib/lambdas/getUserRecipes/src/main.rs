@@ -11,6 +11,13 @@ use aws_config::{meta::region::RegionProviderChain, SdkConfig};
 use aws_sdk_dynamodb::{config::Region, meta::PKG_VERSION};
 use std::collections::HashMap;
 use futures::future::try_join_all;
+use lambda_http::http::HeaderValue;
+use http::header::HeaderMap;
+use lambda_http::ext::extensions::RequestExt;
+use lambda_http::http::Uri;
+use query_map::QueryMap;
+
+
 
 #[derive(Debug)]
 pub struct Opt {
@@ -102,16 +109,6 @@ pub fn make_region_provider(region: Option<String>) -> RegionProviderChain {
 pub async fn make_config(opt: Opt) -> Result<SdkConfig, Error> {
     let region_provider = make_region_provider(opt.region);
 
-    println!();
-    if opt.verbose {
-        println!("DynamoDB client version: {}", PKG_VERSION);
-        println!(
-            "Region:                  {}",
-            region_provider.region().await.unwrap().as_ref()
-        );
-        println!();
-    }
-
     Ok(aws_config::from_env().region(region_provider).load().await)
 }
 
@@ -150,6 +147,18 @@ async fn fetch_recipes(client: &DbClient, table_name: &String, recipe_meta_data_
     results
 }
 
+fn get_request_username(request: Request) -> Option<RequestBody> {
+    let query_params = request.query_string_parameters();
+    println!("Query Params: {:?}", query_params);
+    if let Some(usernames) = query_params.all("username") {
+        return Some(RequestBody {
+            username: usernames[0].to_string()
+        });
+    } else {
+        return None;
+    }
+}
+
 async fn handler(request: Request) -> Result<Response<String>, Error> {
         // 1. Create db client and get table name from env
         let opt = Opt {
@@ -166,7 +175,6 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             },
         };
         let db_client = DbClient::new(&config);
-        println!("DB Client: {:?}", db_client);
 
         let user_table_name = match get_user_table_name().await {
             Some(t) => t,
@@ -186,9 +194,15 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             }
         };
 
-        // 2. Get request body
-        let body = request.body();
-        let user: RequestBody = serde_json::from_slice(&body)?;
+        // 2. Get request user
+        let user = match get_request_username(request) {
+            Some(u) => u,
+            None => {
+                return Ok(Response::builder()
+                    .status(500)
+                    .body(String::from("No username supplied"))?);
+            }
+        };
 
         // 3. Get user's recipes
         let user_recipes = db_client
@@ -225,4 +239,35 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
                 .status(200)
                 .body(String::from("No recipes found for user"))?);
         }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    #[test]
+    fn test_collect_recipe() {
+        dotenv::from_filename("../../.env").ok();
+        // Simulating a request URL with query parameters
+        let uri = Uri::builder()
+            .path_and_query("https://myapi.com/?username=dmbluesmith")
+            .build()
+            .expect("Failed to build URI");
+
+        // Create a request with the constructed URI
+        let mut req = Request::default();
+        *req.uri_mut() = uri;
+
+        // Call the handler function with the constructed request
+        println!("Request: {:?}", req);
+        let res = aw!(handler(req));
+        println!("Response: {:?}", res);
+        assert_eq!(res.unwrap().status().as_u16(), 200);
+    }
 }
