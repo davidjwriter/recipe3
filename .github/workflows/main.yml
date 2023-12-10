@@ -45,10 +45,15 @@ jobs:
         run: npm install -g aws-cdk
 
       - name: Synthesize CDK Stack
-        run: cdk synth
+        run: |
+          cd backend/app
+          npm install
+          cdk synth
 
       - name: Deploy CDK Stack
-        run: cdk deploy
+        run: |
+          cd backend/app
+          cdk deploy --require-approval never
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
