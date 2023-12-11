@@ -192,7 +192,8 @@ export class Recipe3Stack extends Stack {
     // Grant the lambda functions write and read access
     dynamoTable.grantFullAccess(getRecipes);
     dynamoTable.grantFullAccess(addRecipe);
-    dynamoTable.grantFullAccess(addRecipeWorker);    
+    dynamoTable.grantFullAccess(addRecipeWorker);   
+    dynamoTable.grantReadData(getUserRecipes); 
 
     // Create an API Gateway resource for each of the CRUD operations
     const api = new RestApi(this, 'Recipe3API', {

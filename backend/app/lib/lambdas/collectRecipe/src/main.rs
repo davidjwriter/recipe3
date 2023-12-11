@@ -119,17 +119,15 @@ mod tests {
 
     #[test]
     fn test_collect_recipe() {
-        // #[derive(Deserialize)]
-        // pub struct RequestBody {
-        //     pub username: String,
-        //     pub uuid: String
-        // }
+        dotenv::from_filename("../../.env").ok();
         let body = r#"
         {
             "username": "dmbluesmith",
             "uuid": "https://tasty.co/recipe/slow-cooker-loaded-potato-soup"
         }"#;
         let req = Request::new(Body::from(body));
-        aw!(handler(req));
+        println!("Request: {:?}", req);
+        let res = aw!(handler(req));
+        println!("Response: {:?}", res);
     }
 }

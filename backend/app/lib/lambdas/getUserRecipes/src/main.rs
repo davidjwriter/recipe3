@@ -34,7 +34,7 @@ pub struct RequestBody {
     pub username: String
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct RecipeMetaData {
     pub username: String,
     pub uuid: String
@@ -221,6 +221,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             let recipe_meta_data: Vec<RecipeMetaData> = items.iter().map(|item| {
                 RecipeMetaData::from(item)
             }).collect();
+            println!("Recipes for User: {:?}", recipe_meta_data);
 
             let recipes = match fetch_recipes(&db_client, &recipe_table_name, recipe_meta_data).await {
                 Ok(r) => r,
