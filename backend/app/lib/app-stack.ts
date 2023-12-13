@@ -176,6 +176,19 @@ export class Recipe3Stack extends Stack {
       logRetention: RetentionDays.ONE_WEEK
     });
 
+    // Gets all recipes from dynamoDB
+    const tesseract = new Function(this, 'tesseract', {
+      description: "Add recipes",
+      code: Code.fromAsset('lib/lambdas/tesseract/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      environment: {
+        RUST_BACKTRACE: '1',
+        OPEN_AI_API_KEY: openAiApiKey,
+      },
+      logRetention: RetentionDays.ONE_WEEK
+    });
+
 
     // Lambda for minting a recipe
     const mintNFT = new Function(this, 'mintRecipe', {
@@ -211,6 +224,7 @@ export class Recipe3Stack extends Stack {
     const addRecipeAPI = new LambdaIntegration(addRecipe);
     const collectRecipeAPI = new LambdaIntegration(collectRecipe);
     const getUserRecipesAPI = new LambdaIntegration(getUserRecipes);
+    const tesseractAPI = new LambdaIntegration(tesseract);
 
     const mint = api.root.addResource('mint');
     mint.addMethod('POST', mintNFTAPI);
@@ -222,6 +236,9 @@ export class Recipe3Stack extends Stack {
     const collect = api.root.addResource('collect');
     collect.addMethod('POST', collectRecipeAPI);
     collect.addMethod('GET', getUserRecipesAPI);
+
+    const tess = api.root.addResource('tesseract');
+    tess.addMethod('POST', tesseractAPI);
   }
 }
 
