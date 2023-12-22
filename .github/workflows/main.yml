@@ -40,6 +40,9 @@ jobs:
 
           cd ../getUserRecipes
           ./build.sh
+
+          cd ../tesseract
+          ./build.sh
           
       - name: Install AWS CDK
         run: npm install -g aws-cdk
