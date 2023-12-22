@@ -161,7 +161,7 @@ async fn convert_heic_to_png(url: &str) -> String {
 }
 
 async fn get_image_contents(image_url: &str) -> Result<SuccessResponse, FailureResponse> {
-    let uri = "http://tesseract.us-east-1.elasticbeanstalk.com/api/image-to-text";
+    let uri = "https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/tesseract";
     let mut url = image_url.to_string();
     if is_heic_url(&url) {
         url = convert_heic_to_png(&url).await.to_string();

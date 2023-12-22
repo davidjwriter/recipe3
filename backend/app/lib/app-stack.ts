@@ -182,6 +182,7 @@ export class Recipe3Stack extends Stack {
       code: Code.fromAsset('lib/lambdas/tesseract/target/x86_64-unknown-linux-musl/release/lambda'),
       runtime: Runtime.PROVIDED_AL2,
       handler: 'not.required',
+      timeout: Duration.minutes(5),
       environment: {
         RUST_BACKTRACE: '1',
         OPEN_AI_API_KEY: openAiApiKey,
