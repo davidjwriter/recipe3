@@ -20,7 +20,7 @@ import { AwsIntegration } from 'aws-cdk-lib/aws-apigateway';
 export class Recipe3Stack extends Stack {
   constructor(app: App, id: string) {
     super(app, id);
-    dotenv.config({ path: path.resolve(__dirname, '.env') });
+    // dotenv.config({ path: path.resolve(__dirname, '.env') });
     const openAiApiKey = process.env.OPEN_AI_API_KEY || 'NO_API_KEY';
     const privateKey = process.env.PRIVATE_KEY || 'NO_PRIVATE_KEY';
     const nftStoreApiKey = process.env.NFT_STORAGE_API_KEY || 'No NFT Store API Key';
