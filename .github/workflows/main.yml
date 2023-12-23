@@ -16,19 +16,19 @@ jobs:
       - name: Set up Rust
         uses: ATiltedTree/setup-rust@v1
         with:
-          rust-version: 'stable'
-          
+          rust-version: "stable"
+
       - name: Install Dependencies
         run: |
           sudo apt-get install musl-tools
-          
+
       - name: Build Lambda Functions
         run: |
           rustup target add x86_64-unknown-linux-musl
-          
+
           cd backend/app/lib/lambdas/addRecipe
           ./build.sh
-          
+
           cd ../addRecipeWorker
           ./build.sh
 
@@ -43,10 +43,13 @@ jobs:
 
           cd ../tesseract
           ./build.sh
-          
+
+          cd ../updateRecipe
+          ./build.sh
+
       - name: Install AWS CDK
         run: npm install -g aws-cdk
-        
+
       - name: Deploy CDK Stack
         run: |
           cd backend/app

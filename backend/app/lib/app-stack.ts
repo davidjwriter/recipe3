@@ -133,6 +133,21 @@ export class Recipe3Stack extends Stack {
 
     recipeTopic.grantPublish(addRecipe);
 
+    // Update a recipe
+    const updateRecipe = new Function(this, 'updateRecipe', {
+      description: "Update recipes",
+      code: Code.fromAsset('lib/lambdas/updateRecipe/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      timeout: Duration.minutes(5),
+      environment: {
+        RUST_BACKTRACE: '1',
+        TABLE_NAME: 'Recipes'
+      },
+      logRetention: RetentionDays.ONE_WEEK,
+      role: lambdaRole
+    });
+
     // Add recipe to user's recipe book
     const collectRecipe = new Function(this, 'collectRecipe', {
       description: "Add user recipe",
@@ -208,6 +223,8 @@ export class Recipe3Stack extends Stack {
     dynamoTable.grantFullAccess(addRecipe);
     dynamoTable.grantFullAccess(addRecipeWorker);   
     dynamoTable.grantReadData(getUserRecipes); 
+    dynamoTable.grantFullAccess(updateRecipe);
+
 
     // Create an API Gateway resource for each of the CRUD operations
     const api = new RestApi(this, 'Recipe3API', {
@@ -226,6 +243,7 @@ export class Recipe3Stack extends Stack {
     const collectRecipeAPI = new LambdaIntegration(collectRecipe);
     const getUserRecipesAPI = new LambdaIntegration(getUserRecipes);
     const tesseractAPI = new LambdaIntegration(tesseract);
+    const updateRecipeAPI = new LambdaIntegration(updateRecipe);
 
     const mint = api.root.addResource('mint');
     mint.addMethod('POST', mintNFTAPI);
@@ -240,6 +258,9 @@ export class Recipe3Stack extends Stack {
 
     const tess = api.root.addResource('tesseract');
     tess.addMethod('POST', tesseractAPI);
+
+    const update = api.root.addResource('update');
+    update.addMethod('POST', updateRecipeAPI);
   }
 }
 
