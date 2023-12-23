@@ -16,6 +16,7 @@ const INGREDIENTS: &str = "ingredients";
 const INSTRUCTIONS: &str = "instructions";
 const NOTES: &str = "notes";
 const SUMMARY: &str = "summary";
+const OWNER: &str = "owner";
 
 #[derive(Debug)]
 pub struct Opt {
@@ -23,6 +24,12 @@ pub struct Opt {
     pub region: Option<String>,
     /// Whether to display additional information.
     pub verbose: bool,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UpdateRequest {
+    owner: String,
+    updated_recipe: Recipe
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -33,20 +40,28 @@ pub struct Recipe {
     pub instructions: Option<Vec<String>>,
     pub notes: Option<String>,
     pub summary: Option<String>,
+    pub owner: Option<String>
 }
 
 #[derive(Debug)]
 pub struct Expression {
     pub expression: String,
+    pub condition: String,
     pub names: HashMap<String, String>,
     pub values: HashMap<String, AttributeValue>
 }
 
 impl Expression {
-    fn from(recipe: Recipe) -> Expression {
+    fn from(req: UpdateRequest) -> Expression {
+        let recipe: Recipe = req.updated_recipe;
         let mut expressions: Vec<String> = Vec::new();
         let mut names: HashMap<String, String> = HashMap::new();
         let mut values: HashMap<String, AttributeValue> = HashMap::new();
+
+        // Create Condition
+        let condition = "attribute_exists(#owner) AND #owner = :currentOwner".to_string();
+        values.insert(":currentOwner".to_string(), AttributeValue::S(req.owner.clone()));
+        names.insert("#owner".to_string(), OWNER.to_string());
 
         // Name
         if let Some(name) = &recipe.name {
@@ -85,8 +100,15 @@ impl Expression {
             values.insert(":summaryValue".to_string(), AttributeValue::S(summary.clone()));
         }
 
+        if let Some(owner) = &recipe.owner {
+            expressions.push(String::from("#owner = :ownerValue"));
+            names.insert("#owner".to_string(), OWNER.to_string());
+            values.insert(":ownerValue".to_string(), AttributeValue::S(owner.clone()));
+        }
+
         Expression {
             expression: format!("SET {}", expressions.join(",")),
+            condition,
             names,
             values
         }
@@ -128,17 +150,19 @@ fn split_string(string: String) -> Vec<String> {
     escaped_strings
 }
 
-pub async fn update_db(client: &DbClient, recipe: Recipe, table: &String) -> Result<String, Error> {
-    let uuid = AttributeValue::S(recipe.uuid.clone());
-    let expression = Expression::from(recipe);
+pub async fn update_db(client: &DbClient, req: UpdateRequest, table: &String) -> Result<String, Error> {
+    let uuid = AttributeValue::S(req.updated_recipe.uuid.clone());
+    let expression = Expression::from(req);
     println!("Expression: {:?}", expression.expression);
+
     let request = client
         .update_item()
         .table_name(table)
         .key("uuid".to_string(), uuid)
         .update_expression(expression.expression)
         .set_expression_attribute_names(Some(expression.names))
-        .set_expression_attribute_values(Some(expression.values));
+        .set_expression_attribute_values(Some(expression.values))
+        .set_condition_expression(Some(expression.condition));
 
     request.send().await?;
 
@@ -184,9 +208,11 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
     println!("Table Name: {}", table_name);
 
     let body = request.body();
-    let recipe: Recipe = serde_json::from_slice(&body)?;
+    let req: UpdateRequest = serde_json::from_slice(&body)?;
 
-    match update_db(&db_client, recipe, &table_name).await {
+    println!("Recipe: {:?}", req);
+
+    match update_db(&db_client, req, &table_name).await {
         Ok(_) => {
             return Ok(Response::builder()
                 .status(200)
@@ -217,16 +243,95 @@ mod tests {
         dotenv::from_filename("../../.env").ok();
         let body = r#"
         {
-            "uuid": "https://tasty.co/recipe/taco-soup",
-            "name": "Taco Soup",
-            "instructions": [
-                "First, make tacos",
-                "Now, eat them"
-            ]
+            "owner": "dmbluesmith",
+            "updated_recipe": {
+                "uuid": "https://tasty.co/recipe/taco-soup",
+                "name": "Taco Soup",
+                "instructions": [
+                    "First, make tacos",
+                    "Now, eat them"
+                ]
+            }
         }"#;
         let req = Request::new(Body::from(body));
         let res = aw!(handler(req));
         println!("Response: {:?}", res);
         assert_eq!(res.unwrap().status().as_u16(), 200);
+    }
+
+    #[test]
+    fn test_update_not_allow() {
+        dotenv::from_filename("../../.env").ok();
+        let body = r#"
+        {
+            "owner": "hacker",
+            "updated_recipe": {
+                "uuid": "https://tasty.co/recipe/taco-soup",
+                "name": "Hack That Soup",
+                "instructions": [
+                    "First, make hacked",
+                    "Now, die"
+                ]
+            }
+        }"#;
+        let req = Request::new(Body::from(body));
+        let res = aw!(handler(req));
+        println!("Response: {:?}", res);
+        assert_eq!(res.unwrap().status().as_u16(), 400);
+    }
+
+    #[test]
+    fn test_one_time_update() {
+        dotenv::from_filename("../../.env").ok();
+        let uuids = vec![
+            "https://www.keyingredient.com/recipes/2854685032/pomegranate-habanero-beef/AMP/",
+            "https://tasty.co/recipe/slow-cooker-loaded-potato-soup",
+            "https://www.allrecipes.com/recipe/12578/cinnamon-pie/",
+            "https://mxriyum.com/mozzarella-stuffed-rosemary-pull-apart-bread/",
+            "https://www.wandercooks.com/gyoza-japanese-pork-dumplings/",
+            "https://www.foodandwine.com/recipes/pumpkin-gingersnap-tiramisu",
+            "https://whatgreatgrandmaate.com/asian-chili-garlic-shrimp/",
+            "https://minimalistbaker.com/1-pot-apple-butter-date-sweetened/",
+            "448b5102-ca04-4451-a18e-692acbeded01",
+            "https://www.allrecipes.com/air-fryer-turtle-cheesecake-recipe-7511366",
+            "https://tasty.co/recipe/homemade-cinnamon-rolls",
+            "https://mxriyum.com/lobster-mac-cheese/",
+            "https://tasty.co/recipe/one-pot-chicken-fajita-pasta",
+            "https://www.keyingredient.com/recipes/2854685032/pomegranate-habanero-beef/",
+            "https://tasty.co/recipe/one-pot-swedish-meatball-pasta",
+            "https://tasty.co/recipe/molten-lava-brownie",
+            "https://tasty.co/recipe/garlic-bacon-shrimp-alfredo",
+            "ef0b8b8f-282e-45e1-ada5-8e1ac96f1fc0",
+            "366919cf-eaa3-454e-8747-e8435615d719",
+            "https://www.allrecipes.com/recipe/8538411/smores-cookies/",
+            "https://tasty.co/recipe/taco-soup",
+            "https://www.allrecipes.com/easy-cheesy-pull-apart-garlic-bread-recipe-7563489",
+            "https://mxriyum.com/mini-chicken-alfredo-pizzas/",
+            "https://tasty.co/recipe/the-best-chewy-chocolate-chip-cookies",
+            "https://www.chilipeppermadness.com/chili-pepper-recipes/hot-sauces/ghost-pepper-hot-sauce-recipe/",
+            "https://tasty.co/recipe/baked-lobster-tails",
+            "https://tasty.co/recipe/keto-bacon-cauliflower-mac-n-cheese",
+            "https://www.foodfaithfitness.com/no-bake-whole30-apple-almond-butter-bars",
+            "https://tasty.co/recipe/easy-butter-chicken",
+            "https://mxriyum.com/cinnamon-rolls/",
+            "897399ef-2d4b-40a5-8d72-704c675fea24",
+            "https://www.modernhoney.com/the-best-pumpkin-pie-recipe/"
+        ];
+        for uuid in &uuids {
+            let body = format!(
+                r#"{{
+                    "owner": "dmbluesmith",
+                    "updated_recipe": {{
+                        "uuid": "{}",
+                        "owner": "dmbluesmith"
+                    }}
+                }}"#,
+                uuid
+            );
+            let req = Request::new(Body::from(body));
+            let res = aw!(handler(req));
+            println!("Response: {:?}", res);
+            assert_eq!(res.unwrap().status().as_u16(), 200);
+        }
     }
 }
