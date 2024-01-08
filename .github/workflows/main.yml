@@ -10,6 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Print Environment Variables
+        run: |
+          echo "AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}"
+          echo "AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          echo "AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}"
+          echo "OPEN_AI_API_KEY: ${{ secrets.OPEN_AI_API_KEY }}"
+          echo "BUCKET_NAME: ${{ secrets.BUCKET_NAME }}"
+          echo "PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}"
+          echo "NFT_STORAGE_API_KEY: ${{ secrets.NFT_STORAGE_API_KEY }}"
+          echo "CLOUD_CONVERT_API_KEY: ${{ secrets.CLOUD_CONVERT_API_KEY }}"
+
       - name: Checkout code
         uses: actions/checkout@v2
 
