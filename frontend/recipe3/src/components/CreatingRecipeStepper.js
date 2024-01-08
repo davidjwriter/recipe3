@@ -38,7 +38,6 @@ const CreatingRecipeStepper = (props) => {
             "credit": props.newRecipe["credit"],
             "content_type": props.newRecipe["contentType"]
           });
-          console.log(body);
           try {
             const response = await fetch(apiUrl, {
                 method: 'POST',
@@ -53,9 +52,7 @@ const CreatingRecipeStepper = (props) => {
                 props.handleClose();
             } else {
               const responseData = await response.json();
-              console.log(responseData);
               if (responseData.uuid !== undefined) {
-                console.log("ok?");
                 setRecipe(responseData);
               } else {
                 setSqsUrl(responseData.sqs_url);

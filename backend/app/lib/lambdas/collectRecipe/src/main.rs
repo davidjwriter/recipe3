@@ -70,6 +70,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             Err(e) => {
                 return Ok(Response::builder()
                 .status(500)
+                .header("Access-Control-Allow-Origin", "*")
                 .body(format!("Error making config: {}", e.to_string()))?);
                 
             },
@@ -81,6 +82,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
             None => {
                 return Ok(Response::builder()
                 .status(500)
+                .header("Access-Control-Allow-Origin", "*")
                 .body(String::from("TABLE_NAME not set"))?);
             }
         };
@@ -104,6 +106,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
 
         Ok(Response::builder()
             .status(200)
+            .header("Access-Control-Allow-Origin", "*")
             .body(String::from("Collected!"))?)
 }
 

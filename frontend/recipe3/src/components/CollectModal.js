@@ -17,7 +17,7 @@ const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
 });
 
-export default function MintModal(props) {
+export default function CollectModal(props) {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const user = useSelector(state => state.user);
@@ -32,30 +32,8 @@ export default function MintModal(props) {
     submitMintRecipe();
   }
 
-  const createDescription = () => {
-    const markdown = `
-## Description
-${props.recipe['summary']}
-
-## Ingredients
-${props.recipe['ingredients'].map(ingredient => `* ${ingredient}`).join('\n')}
-
-## Instructions
-${props.recipe["instructions"].map((instruction, index) => `${index + 1}. ${instruction}`).join('\n')}
-
-## Notes
-${props.recipe['notes']}
-
-## Credit
-${props.recipe["credit"] === undefined ? props.recipe['uuid'] : props.recipe["credit"]}
-    `;
-    return markdown;
-  }
-
   const submitMintRecipe = async () => {
-    const apiUrl = "https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/mint";
-    const description = createDescription();
-    console.log(description);
+    const apiUrl = "https://ucowpmolm0.execute-api.us-east-1.amazonaws.com/prod/collect";
     setSubmitting(true);
     const response = await fetch(apiUrl, {
         method: 'POST',
@@ -63,10 +41,8 @@ ${props.recipe["credit"] === undefined ? props.recipe['uuid'] : props.recipe["cr
         'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-            "receiver": user.publicKey,
-            "name": props.recipe["name"],
-            "description": description,
-            "image": props.recipe["image"]
+            "username": user.publicKey,
+            "uuid": props.recipe["uuid"]
         }),
     });
 
@@ -93,7 +69,7 @@ ${props.recipe["credit"] === undefined ? props.recipe['uuid'] : props.recipe["cr
         {!submitting &&
         <DialogContent>
           <DialogContentText>
-            Collect {props.recipe["name"]} and store it in your wallet!
+            Collect {props.recipe["name"]} and store it in your recipe book!
           </DialogContentText>
         </DialogContent>
         }

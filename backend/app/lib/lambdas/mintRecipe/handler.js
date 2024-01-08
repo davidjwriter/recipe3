@@ -41,7 +41,6 @@ async function fetchImageFromS3(url) {
       response.data.on('error', (error) => reject(error));
     });
     // Return the stream of the image
-    console.log(imageData);
     return imageData;
   } catch (error) {
     console.error('Error fetching image from S3:', error);

@@ -18,7 +18,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useEffect, useState } from 'react';
 import { List, ListItem } from '@mui/material';
 import RecipeModal from './RecipeModal';
-import MintModal from './MintModal';
+import CollectModal from './CollectModal';
 import { useSelector } from 'react-redux';
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
@@ -60,7 +60,7 @@ const RecipeCard = (props) => {
     return (
         <Grid item key={props.index} xs={12} sm={6}>
         <RecipeModal open={open} handleClose={handleClose} handleMint={handleMint} recipe={props.recipe} showCollect={props.showCollect}/>
-        <MintModal open={openMint} handleClose={handleMintClose} recipe={props.recipe}/>
+        <CollectModal open={openMint} handleClose={handleMintClose} recipe={props.recipe}/>
         <Snackbar open={openLogonWarning} autoHideDuration={6000} onClose={closeLogonWarning}>
           <Alert onClose={closeLogonWarning} severity="warning" sx={{ width: '100%' }}>
             Please login to collect a recipe!

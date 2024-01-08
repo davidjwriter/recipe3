@@ -28,7 +28,6 @@ export default function RecipeModal(props) {
     return urlPattern.test(string);
   }
   const getCredit = (recipe) => {
-      console.log(recipe);
       if (isValidUrl(recipe["uuid"])) {
           return recipe["uuid"];
       } else {

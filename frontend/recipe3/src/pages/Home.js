@@ -51,7 +51,6 @@ const Home = (props) => {
       }
     
       const newRecipeSubmit = (url, credit = '', contentType) => {
-        console.log(url);
         const newUUID = uuidv4();
         setNewRecipe({
           uuid: newUUID,
@@ -73,7 +72,6 @@ const Home = (props) => {
               },
             });
             const jsonData = await response.json();
-            console.log(paginateList(jsonData));
             setRecipes(paginateList(jsonData));
           } catch (error) {
             console.log('Error fetching recipes:', error);
@@ -86,7 +84,6 @@ const Home = (props) => {
         list.sort(function(a, b) {
             return a.name.localeCompare(b.name);
         });
-        console.log(list);
         let data = new Map();
         let i = 0;
         let pageNum = 1;
