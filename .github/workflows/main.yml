@@ -9,6 +9,13 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
+    env:
+      OPEN_AI_API_KEY: ${{ secrets.OPEN_AI_API_KEY }}
+      BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+      NFT_STORAGE_API_KEY: ${{ secrets.NFT_STORAGE_API_KEY }}
+      CLOUD_CONVERT_API_KEY: ${{ secrets.CLOUD_CONVERT_API_KEY }}
+
     steps:
       - name: Print Environment Variables
         run: |
